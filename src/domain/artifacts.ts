@@ -92,6 +92,11 @@ function explicitDateIso(value: string): string | null {
     : null;
 }
 
+function explicitDateIsoInText(value: string): string | null {
+  const match = /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b/.exec(value);
+  return match === null ? null : explicitDateIso(match[0]);
+}
+
 function parseNotice(value: unknown): VendorNotice {
   if (!isRecord(value)) throw new Error("notice must be an object");
   if (value.vendor !== "Slack") throw new Error("notice.vendor must be Slack");
@@ -127,6 +132,16 @@ function parseCapabilityChange(value: unknown): CapabilityChange {
   return { vendor: "Slack", canonicalIdentifier: "slack.files.upload", changeType, deadlineOriginal, deadlineIso };
 }
 
+function assertDeadlineEvidence(notice: VendorNotice, capabilityChange: CapabilityChange): void {
+  const excerptDate = explicitDateIsoInText(notice.excerpt);
+  if (excerptDate !== null && capabilityChange.deadlineIso !== excerptDate) {
+    throw new Error("capabilityChange.deadlineIso does not match the notice evidence");
+  }
+  if (excerptDate === null && capabilityChange.deadlineIso !== null) {
+    throw new Error("capabilityChange.deadlineIso has no matching date in the notice evidence");
+  }
+}
+
 function parseCodeMatch(value: unknown): CodeMatch {
   if (!isRecord(value)) throw new Error("codeMatch must be an object");
   if (value.vendor !== "Slack" || value.capabilityIdentifier !== "slack.files.upload") {
@@ -157,7 +172,10 @@ export function assertVendorNoticeArtifact(value: unknown): VendorNoticeArtifact
   if (!isRecord(value.notice) || !isRecord(value.capabilityChange)) {
     throw new Error("vendor-notice artifact is missing notice or capabilityChange");
   }
-  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "vendor-notice", notice: parseNotice(value.notice), capabilityChange: parseCapabilityChange(value.capabilityChange) };
+  const notice = parseNotice(value.notice);
+  const capabilityChange = parseCapabilityChange(value.capabilityChange);
+  assertDeadlineEvidence(notice, capabilityChange);
+  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "vendor-notice", notice, capabilityChange };
 }
 
 export function assertScanArtifact(value: unknown): ScanArtifact {
@@ -169,6 +187,7 @@ export function assertScanArtifact(value: unknown): ScanArtifact {
   }
   const notice = parseNotice(value.notice);
   const capabilityChange = parseCapabilityChange(value.capabilityChange);
+  assertDeadlineEvidence(notice, capabilityChange);
   const codeMatches = value.codeMatches.map(parseCodeMatch);
   const limitations = value.limitations.map(parseLimitation);
   let impact: Impact | null = null;

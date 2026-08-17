@@ -74,6 +74,12 @@ function slackClientVariableForUpload(expression: ts.Expression): string | null 
   return ts.isIdentifier(filesAccess.expression) ? filesAccess.expression.text : null;
 }
 
+function dynamicFilesUpload(expression: ts.Expression): boolean {
+  if (!ts.isElementAccessExpression(expression) || !ts.isStringLiteral(expression.argumentExpression) || expression.argumentExpression.text !== "upload") return false;
+  const filesAccess = expression.expression;
+  return ts.isElementAccessExpression(filesAccess) && ts.isStringLiteral(filesAccess.argumentExpression) && filesAccess.argumentExpression.text === "files";
+}
+
 function repositoryLocation(file: string, repositoryRoot: string, sourceFile: ts.SourceFile, node: ts.Node): { file: string; line: number } {
   return {
     file: relative(repositoryRoot, file).replaceAll("\\", "/"),
@@ -113,7 +119,7 @@ function matchesInFile(file: string, repositoryRoot: string, capabilityChange: C
         });
       } else if (receiver) {
         addLimitation(node, "The files.upload receiver is not proven to be a Slack client.");
-      } else if (ts.isElementAccessExpression(node.expression) && ts.isPropertyAccessExpression(node.expression.expression) && node.expression.expression.name.text === "files") {
+      } else if ((ts.isElementAccessExpression(node.expression) && ts.isPropertyAccessExpression(node.expression.expression) && node.expression.expression.name.text === "files") || dynamicFilesUpload(node.expression)) {
         addLimitation(node, "Computed files method access cannot be statically proven.");
       }
     }

@@ -30,6 +30,11 @@ function locations(scan: ScanArtifact): string {
     </li>`).join("") ?? "";
 }
 
+function limitations(scan: ScanArtifact): string {
+  if (scan.limitations.length === 0) return "";
+  return `<section class="evidence"><h2>Analysis limitations</h2><p class="muted">These usages were not promoted to CodeMatches because the scanner could not prove them.</p><ul class="locations">${scan.limitations.map(limitation => `<li class="location"><strong><code>${escapeHtml(limitation.file)}:${limitation.line}</code></strong><span>${escapeHtml(limitation.reason)}</span></li>`).join("")}</ul></section>`;
+}
+
 export function renderImpactReport(value: unknown, now = new Date()): string {
   const scan = assertScanArtifact(value);
   if (!scan.impact || scan.impact.codeMatches.length === 0) {
@@ -109,6 +114,7 @@ export function renderImpactReport(value: unknown, now = new Date()): string {
       </div>
       <h2>Proven code location</h2>
       <ul class="locations">${locations(scan)}</ul>
+      ${limitations(scan)}
       <div class="privacy"><strong>Repository analysis stayed local.</strong> Only public vendor material crossed the collection boundary.</div>
     </section>
   </main>

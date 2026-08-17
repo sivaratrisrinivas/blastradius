@@ -8,8 +8,9 @@ import { scanLocalRepository } from "./scan/scan.js";
 
 function option(args: string[], name: string): string {
   const index = args.indexOf(name);
+  if (index === -1) throw new Error(`missing ${name}`);
   const value = args[index + 1];
-  if (index === -1 || !value || value.startsWith("--")) throw new Error(`missing ${name}`);
+  if (!value || value.startsWith("--")) throw new Error(`missing ${name}`);
   return value;
 }
 
@@ -40,7 +41,7 @@ function run(args: string[]): void {
     const notice = assertVendorNoticeArtifact(readJson(option(args, "--collection")));
     const result = scanLocalRepository(repositoryPath, notice);
     writeJson(option(args, "--output"), result);
-    process.stdout.write(`Scanned local repository: ${result.codeMatches.length} proven CodeMatch.\n`);
+    process.stdout.write(`Scanned local repository: ${result.codeMatches.length} proven CodeMatch; ${result.limitations.length} unresolved usage(s).\n`);
     return;
   }
   if (command === "report") {
