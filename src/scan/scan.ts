@@ -28,6 +28,22 @@ interface FileScanResult {
   limitations: AnalysisLimitation[];
 }
 
+type BindingKind = "unknown" | "slack-constructor" | "slack-client";
+
+interface Binding {
+  kind: BindingKind;
+  declaration?: ts.VariableDeclaration;
+}
+
+interface Scope {
+  parent: Scope | null;
+  bindings: Map<string, Binding>;
+}
+
+interface ScopeModel {
+  scopeForNode: ReadonlyMap<ts.Node, Scope>;
+}
+
 function sourceFiles(directory: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -76,26 +92,132 @@ function hasSlackRequire(sourceFile: ts.SourceFile): boolean {
   return found;
 }
 
-function clientVariables(sourceFile: ts.SourceFile, importedClients: Set<string>): Set<string> {
-  const clients = new Set<string>();
-  const visit = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node) && node.initializer && ts.isNewExpression(node.initializer)) {
-      const constructor = node.initializer.expression;
-      if (ts.isIdentifier(node.name) && ts.isIdentifier(constructor) && importedClients.has(constructor.text)) {
-        clients.add(node.name.text);
+function createScopeModel(sourceFile: ts.SourceFile, importedSlackClients: Set<string>): ScopeModel {
+  const scopes: Scope[] = [];
+  const scopeForNode = new Map<ts.Node, Scope>();
+  const root: Scope = { parent: null, bindings: new Map() };
+  scopes.push(root);
+
+  const addBinding = (scope: Scope, name: string, binding: Binding): void => {
+    const existing = scope.bindings.get(name);
+    if (existing) {
+      existing.kind = "unknown";
+      delete existing.declaration;
+      return;
+    }
+    scope.bindings.set(name, binding);
+  };
+
+  const addVariableBindings = (scope: Scope, declarations: ts.NodeArray<ts.VariableDeclaration>): void => {
+    for (const declaration of declarations) {
+      if (ts.isIdentifier(declaration.name)) {
+        addBinding(scope, declaration.name.text, { kind: "unknown", declaration });
       }
     }
-    ts.forEachChild(node, visit);
   };
-  visit(sourceFile);
-  return clients;
+
+  const collectStatementBindings = (scope: Scope, statement: ts.Statement): void => {
+    if (ts.isImportDeclaration(statement)) {
+      const importClause = statement.importClause;
+      if (!importClause) return;
+      if (importClause.name) addBinding(scope, importClause.name.text, { kind: "unknown" });
+      if (importClause.namedBindings && ts.isNamespaceImport(importClause.namedBindings)) {
+        addBinding(scope, importClause.namedBindings.name.text, { kind: "unknown" });
+      }
+      if (importClause.namedBindings && ts.isNamedImports(importClause.namedBindings)) {
+        for (const element of importClause.namedBindings.elements) {
+          addBinding(scope, element.name.text, {
+            kind: importedSlackClients.has(element.name.text) ? "slack-constructor" : "unknown"
+          });
+        }
+      }
+      return;
+    }
+    if (ts.isVariableStatement(statement)) {
+      addVariableBindings(scope, statement.declarationList.declarations);
+      return;
+    }
+    if (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) {
+      if (statement.name) addBinding(scope, statement.name.text, { kind: "unknown" });
+    }
+  };
+
+  const collectScopeBindings = (scope: Scope, statements: ts.NodeArray<ts.Statement>): void => {
+    for (const statement of statements) collectStatementBindings(scope, statement);
+  };
+
+  const createScope = (parent: Scope): Scope => {
+    const scope: Scope = { parent, bindings: new Map() };
+    scopes.push(scope);
+    return scope;
+  };
+
+  const visit = (node: ts.Node, scope: Scope): void => {
+    if (ts.isSourceFile(node)) {
+      scopeForNode.set(node, scope);
+      collectScopeBindings(scope, node.statements);
+      for (const child of node.statements) visit(child, scope);
+      return;
+    }
+    if (ts.isBlock(node)) {
+      const blockScope = createScope(scope);
+      scopeForNode.set(node, blockScope);
+      collectScopeBindings(blockScope, node.statements);
+      for (const child of node.statements) visit(child, blockScope);
+      return;
+    }
+    if (ts.isFunctionLike(node)) {
+      const functionScope = createScope(scope);
+      scopeForNode.set(node, functionScope);
+      for (const parameter of node.parameters) {
+        if (ts.isIdentifier(parameter.name)) addBinding(functionScope, parameter.name.text, { kind: "unknown" });
+      }
+      ts.forEachChild(node, child => visit(child, functionScope));
+      return;
+    }
+    scopeForNode.set(node, scope);
+    ts.forEachChild(node, child => visit(child, scope));
+  };
+
+  visit(sourceFile, root);
+
+  const resolveBinding = (scope: Scope, name: string): Binding | undefined => {
+    for (let current: Scope | null = scope; current; current = current.parent) {
+      const binding = current.bindings.get(name);
+      if (binding) return binding;
+    }
+    return undefined;
+  };
+
+  for (const scope of scopes) {
+    for (const binding of scope.bindings.values()) {
+      const initializer = binding.declaration?.initializer;
+      if (binding.kind !== "unknown" || !initializer || !ts.isNewExpression(initializer)) continue;
+      const constructor = initializer.expression;
+      if (ts.isIdentifier(constructor) && resolveBinding(scope, constructor.text)?.kind === "slack-constructor") {
+        binding.kind = "slack-client";
+      }
+    }
+  }
+
+  return { scopeForNode };
 }
 
-function slackClientVariableForUpload(expression: ts.Expression): string | null {
+function isProvenSlackClient(identifier: ts.Identifier, scopeModel: ScopeModel): boolean {
+  let scope = scopeModel.scopeForNode.get(identifier) ?? null;
+  while (scope) {
+    const binding = scope.bindings.get(identifier.text);
+    if (binding) return binding.kind === "slack-client";
+    scope = scope.parent;
+  }
+  return false;
+}
+
+function slackClientVariableForUpload(expression: ts.Expression): ts.Identifier | null {
   if (!ts.isPropertyAccessExpression(expression) || expression.name.text !== "upload") return null;
   const filesAccess = expression.expression;
   if (!ts.isPropertyAccessExpression(filesAccess) || filesAccess.name.text !== "files") return null;
-  return ts.isIdentifier(filesAccess.expression) ? filesAccess.expression.text : null;
+  return ts.isIdentifier(filesAccess.expression) ? filesAccess.expression : null;
 }
 
 function dynamicFilesUpload(expression: ts.Expression): boolean {
@@ -118,7 +240,7 @@ function matchesInFile(file: string, repositoryRoot: string, capabilityChange: C
   const content = readFileSync(file, "utf8");
   const sourceFile = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, SOURCE_EXTENSIONS.get(extname(file)));
   const importedClients = importedSlackClients(sourceFile);
-  const clients = clientVariables(sourceFile, importedClients);
+  const scopeModel = createScopeModel(sourceFile, importedClients);
   const matches: CodeMatch[] = [];
   const limitations: AnalysisLimitation[] = [];
   const unresolvedLocations = new Set<string>();
@@ -132,7 +254,7 @@ function matchesInFile(file: string, repositoryRoot: string, capabilityChange: C
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
       const receiver = slackClientVariableForUpload(node.expression);
-      if (receiver && clients.has(receiver)) {
+      if (receiver && isProvenSlackClient(receiver, scopeModel)) {
         const lineStart = sourceFile.getLineStarts()[sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line];
         const lineEnd = content.indexOf("\n", lineStart);
         matches.push({
