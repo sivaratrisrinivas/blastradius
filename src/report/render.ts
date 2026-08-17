@@ -1,6 +1,7 @@
 import {
   assertScanArtifact,
   type DeadlineStatus,
+  type JsonValue,
   type ScanArtifact
 } from "../domain/artifacts.js";
 
@@ -35,7 +36,7 @@ function limitations(scan: ScanArtifact): string {
   return `<section class="evidence"><h2>Analysis limitations</h2><p class="muted">These usages were not promoted to CodeMatches because the scanner could not prove them.</p><ul class="locations">${scan.limitations.map(limitation => `<li class="location"><strong><code>${escapeHtml(limitation.file)}:${limitation.line}</code></strong><span>${escapeHtml(limitation.reason)}</span></li>`).join("")}</ul></section>`;
 }
 
-export function renderImpactReport(value: unknown, now = new Date()): string {
+export function renderImpactReport(value: JsonValue, now = new Date()): string {
   const scan = assertScanArtifact(value);
   if (!scan.impact || scan.impact.codeMatches.length === 0) {
     throw new Error("cannot generate an Impact Report without a proven CodeMatch");

@@ -2,6 +2,12 @@ export const ARTIFACT_SCHEMA_VERSION = 1 as const;
 export const SLACK_VENDOR_NOTICE_SOURCE_URL = "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/";
 export const SLACK_VENDOR_NOTICE_EXCERPT = "The files.upload method stopped functioning on November 12, 2025.";
 
+export type JsonPrimitive = boolean | null | number | string;
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
+
 export type ChangeType = "deprecation" | "sunset" | "shutdown" | "removal";
 
 export interface VendorNotice {
@@ -61,20 +67,51 @@ export interface ScanArtifact {
   impact: Impact | null;
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+export function parseJson(text: string): JsonValue {
+  return JSON.parse(text);
 }
 
-export function asString(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim() === "") {
+export function isRecord(value: JsonValue): value is JsonObject {
+  return value !== null && !Array.isArray(value) && Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function isStringValue(value: JsonValue): value is string {
+  return Object.prototype.toString.call(value) === "[object String]";
+}
+
+function isNumberValue(value: JsonValue): value is number {
+  return Object.prototype.toString.call(value) === "[object Number]" && Number.isFinite(value);
+}
+
+export function asString(value: JsonValue, field: string): string {
+  if (!isStringValue(value) || value.trim() === "") {
     throw new Error(`${field} must be a non-empty string`);
   }
   return value;
 }
 
-const ALLOWED_CHANGE_TYPES = new Set<ChangeType>(["deprecation", "sunset", "shutdown", "removal"]);
-const ALLOWED_EVIDENCE_STRENGTHS = new Set<EvidenceStrength>(["direct", "alias-traced"]);
-const ALLOWED_CONTEXTS = new Set<MatchContext>(["source", "test", "example"]);
+function asPositiveInteger(value: JsonValue, field: string): number {
+  if (!isNumberValue(value) || !Number.isInteger(value) || value < 1) {
+    throw new Error(`${field} must be a positive integer`);
+  }
+  return value;
+}
+
+const ALLOWED_CHANGE_TYPES: ReadonlySet<string> = new Set(["deprecation", "sunset", "shutdown", "removal"]);
+const ALLOWED_EVIDENCE_STRENGTHS: ReadonlySet<string> = new Set(["direct", "alias-traced"]);
+const ALLOWED_CONTEXTS: ReadonlySet<string> = new Set(["source", "test", "example"]);
+
+export function isChangeType(value: string): value is ChangeType {
+  return ALLOWED_CHANGE_TYPES.has(value);
+}
+
+function isEvidenceStrength(value: string): value is EvidenceStrength {
+  return ALLOWED_EVIDENCE_STRENGTHS.has(value);
+}
+
+function isMatchContext(value: string): value is MatchContext {
+  return ALLOWED_CONTEXTS.has(value);
+}
 
 export function isExactDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -97,7 +134,7 @@ function explicitDateIsoInText(value: string): string | null {
   return match === null ? null : explicitDateIso(match[0]);
 }
 
-function parseNotice(value: unknown): VendorNotice {
+function parseNotice(value: JsonValue): VendorNotice {
   if (!isRecord(value)) throw new Error("notice must be an object");
   if (value.vendor !== "Slack") throw new Error("notice.vendor must be Slack");
   const sourceUrl = asString(value.sourceUrl, "notice.sourceUrl");
@@ -109,14 +146,14 @@ function parseNotice(value: unknown): VendorNotice {
   return { vendor: "Slack", sourceUrl, retrievedAt, excerpt };
 }
 
-function parseCapabilityChange(value: unknown): CapabilityChange {
+function parseCapabilityChange(value: JsonValue): CapabilityChange {
   if (!isRecord(value)) throw new Error("capabilityChange must be an object");
   if (value.vendor !== "Slack") throw new Error("capabilityChange.vendor must be Slack");
   if (value.canonicalIdentifier !== "slack.files.upload") {
     throw new Error("capabilityChange.canonicalIdentifier must be slack.files.upload");
   }
-  const changeType = asString(value.changeType, "capabilityChange.changeType") as ChangeType;
-  if (!ALLOWED_CHANGE_TYPES.has(changeType)) throw new Error("capabilityChange.changeType is not allowed");
+  const changeTypeValue = asString(value.changeType, "capabilityChange.changeType");
+  if (!isChangeType(changeTypeValue)) throw new Error("capabilityChange.changeType is not allowed");
   const deadlineOriginal = asString(value.deadlineOriginal, "capabilityChange.deadlineOriginal");
   const deadlineIso = value.deadlineIso === null ? null : asString(value.deadlineIso, "capabilityChange.deadlineIso");
   if (deadlineIso === null) {
@@ -129,7 +166,7 @@ function parseCapabilityChange(value: unknown): CapabilityChange {
       throw new Error("capabilityChange.deadlineIso does not match deadlineOriginal");
     }
   }
-  return { vendor: "Slack", canonicalIdentifier: "slack.files.upload", changeType, deadlineOriginal, deadlineIso };
+  return { vendor: "Slack", canonicalIdentifier: "slack.files.upload", changeType: changeTypeValue, deadlineOriginal, deadlineIso };
 }
 
 function assertDeadlineEvidence(notice: VendorNotice, capabilityChange: CapabilityChange): void {
@@ -142,7 +179,7 @@ function assertDeadlineEvidence(notice: VendorNotice, capabilityChange: Capabili
   }
 }
 
-function parseCodeMatch(value: unknown): CodeMatch {
+function parseCodeMatch(value: JsonValue): CodeMatch {
   if (!isRecord(value)) throw new Error("codeMatch must be an object");
   if (value.vendor !== "Slack" || value.capabilityIdentifier !== "slack.files.upload") {
     throw new Error("codeMatch provenance does not match Slack files.upload");
@@ -151,21 +188,20 @@ function parseCodeMatch(value: unknown): CodeMatch {
   if (file.startsWith("/") || file.startsWith("\\") || file.split(/[\\/]/).includes("..")) {
     throw new Error("codeMatch.file must be repository-relative");
   }
-  if (!Number.isInteger(value.line) || (value.line as number) < 1) throw new Error("codeMatch.line must be a positive integer");
-  const evidenceStrength = asString(value.evidenceStrength, "codeMatch.evidenceStrength") as EvidenceStrength;
-  if (!ALLOWED_EVIDENCE_STRENGTHS.has(evidenceStrength)) throw new Error("codeMatch.evidenceStrength is not allowed");
-  const context = asString(value.context, "codeMatch.context") as MatchContext;
-  if (!ALLOWED_CONTEXTS.has(context)) throw new Error("codeMatch.context is not allowed");
-  return { vendor: "Slack", capabilityIdentifier: "slack.files.upload", file, line: value.line as number, evidenceStrength, context, evidence: asString(value.evidence, "codeMatch.evidence") };
+  const line = asPositiveInteger(value.line, "codeMatch.line");
+  const evidenceStrengthValue = asString(value.evidenceStrength, "codeMatch.evidenceStrength");
+  if (!isEvidenceStrength(evidenceStrengthValue)) throw new Error("codeMatch.evidenceStrength is not allowed");
+  const contextValue = asString(value.context, "codeMatch.context");
+  if (!isMatchContext(contextValue)) throw new Error("codeMatch.context is not allowed");
+  return { vendor: "Slack", capabilityIdentifier: "slack.files.upload", file, line, evidenceStrength: evidenceStrengthValue, context: contextValue, evidence: asString(value.evidence, "codeMatch.evidence") };
 }
 
-function parseLimitation(value: unknown): AnalysisLimitation {
+function parseLimitation(value: JsonValue): AnalysisLimitation {
   if (!isRecord(value)) throw new Error("analysis limitation must be an object");
-  if (!Number.isInteger(value.line) || (value.line as number) < 1) throw new Error("analysis limitation line must be a positive integer");
-  return { file: asString(value.file, "analysis limitation.file"), line: value.line as number, reason: asString(value.reason, "analysis limitation.reason") };
+  return { file: asString(value.file, "analysis limitation.file"), line: asPositiveInteger(value.line, "analysis limitation.line"), reason: asString(value.reason, "analysis limitation.reason") };
 }
 
-export function assertVendorNoticeArtifact(value: unknown): VendorNoticeArtifact {
+export function assertVendorNoticeArtifact(value: JsonValue): VendorNoticeArtifact {
   if (!isRecord(value) || value.schemaVersion !== ARTIFACT_SCHEMA_VERSION || value.kind !== "vendor-notice") {
     throw new Error("vendor-notice artifact has an unsupported schema");
   }
@@ -178,7 +214,7 @@ export function assertVendorNoticeArtifact(value: unknown): VendorNoticeArtifact
   return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "vendor-notice", notice, capabilityChange };
 }
 
-export function assertScanArtifact(value: unknown): ScanArtifact {
+export function assertScanArtifact(value: JsonValue): ScanArtifact {
   if (!isRecord(value) || value.schemaVersion !== ARTIFACT_SCHEMA_VERSION || value.kind !== "scan-result") {
     throw new Error("scan-result artifact has an unsupported schema");
   }

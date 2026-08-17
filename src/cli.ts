@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { collectSlackNotice } from "./collection/collect.js";
-import { assertScanArtifact, assertVendorNoticeArtifact } from "./domain/artifacts.js";
+import { assertVendorNoticeArtifact, parseJson, type JsonValue, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
 import { renderImpactReport } from "./report/render.js";
 import { scanLocalRepository } from "./scan/scan.js";
 
@@ -14,14 +14,14 @@ function option(args: string[], name: string): string {
   return value;
 }
 
-function writeJson(path: string, value: unknown): void {
+function writeJson(path: string, value: VendorNoticeArtifact | ScanArtifact): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function readJson(path: string): unknown {
+function readJson(path: string): JsonValue {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    return parseJson(readFileSync(path, "utf8"));
   } catch (error) {
     throw new Error(`could not read artifact ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -62,7 +62,7 @@ function run(args: string[]): void {
     return;
   }
   if (command === "report") {
-    const report = renderImpactReport(assertScanArtifact(readJson(option(args, "--scan"))));
+    const report = renderImpactReport(readJson(option(args, "--scan")));
     const outputPath = option(args, "--output");
     mkdirSync(dirname(outputPath), { recursive: true });
     writeFileSync(outputPath, report, "utf8");

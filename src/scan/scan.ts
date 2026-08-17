@@ -18,6 +18,16 @@ const SOURCE_EXTENSIONS = new Map([
 ]);
 const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "coverage"]);
 
+interface RepositoryLocation {
+  file: string;
+  line: number;
+}
+
+interface FileScanResult {
+  matches: CodeMatch[];
+  limitations: AnalysisLimitation[];
+}
+
 function sourceFiles(directory: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -97,14 +107,14 @@ function dynamicFilesUpload(expression: ts.Expression): boolean {
   return (ts.isElementAccessExpression(filesAccess) || ts.isPropertyAccessExpression(filesAccess)) && ((ts.isElementAccessExpression(filesAccess) && ts.isStringLiteral(filesAccess.argumentExpression) && filesAccess.argumentExpression.text === "files") || (ts.isPropertyAccessExpression(filesAccess) && filesAccess.name.text === "files"));
 }
 
-function repositoryLocation(file: string, repositoryRoot: string, sourceFile: ts.SourceFile, node: ts.Node): { file: string; line: number } {
+function repositoryLocation(file: string, repositoryRoot: string, sourceFile: ts.SourceFile, node: ts.Node): RepositoryLocation {
   return {
     file: relative(repositoryRoot, file).replaceAll("\\", "/"),
     line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
   };
 }
 
-function matchesInFile(file: string, repositoryRoot: string, capabilityChange: CapabilityChange): { matches: CodeMatch[]; limitations: AnalysisLimitation[] } {
+function matchesInFile(file: string, repositoryRoot: string, capabilityChange: CapabilityChange): FileScanResult {
   const content = readFileSync(file, "utf8");
   const sourceFile = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, SOURCE_EXTENSIONS.get(extname(file)));
   const importedClients = importedSlackClients(sourceFile);
