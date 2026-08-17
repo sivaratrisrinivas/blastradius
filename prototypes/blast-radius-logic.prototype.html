@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blast Radius three-click prototype — throwaway</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #24322a;
+      --muted: #657269;
+      --paper: #fffaf1;
+      --surface: #fffefb;
+      --line: #e5e1d7;
+      --accent: #267458;
+      --accent-hover: #1d6148;
+      --mint: #e6f3e9;
+      --peach: #fff0dc;
+      --peach-ink: #74512e;
+      --rose: #fae9e4;
+      --rose-ink: #8c4237;
+      --focus: #e7a85f;
+      --shadow: 0 18px 48px rgb(94 72 43 / 10%);
+      font-family: "Avenir Next", Avenir, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { accent-color: var(--accent); }
+    body { margin: 0; color: var(--ink); background: var(--paper); line-height: 1.55; }
+    body::before { content: ""; display: block; height: 10px; background: #f4c990; }
+    ::selection { color: var(--ink); background: #f7d7a8; }
+    main { width: min(760px, calc(100% - 40px)); min-height: calc(100vh - 10px); margin: 0 auto; padding: 30px 0 72px; }
+    h1, p { margin-top: 0; }
+    h1 {
+      max-width: 16ch;
+      margin-bottom: 14px;
+      font-family: Iowan Old Style, Palatino Linotype, Book Antiqua, Georgia, ui-serif, serif;
+      font-size: clamp(2.15rem, 6vw, 3.65rem);
+      font-weight: 700;
+      letter-spacing: -.03em;
+      line-height: 1.04;
+      text-wrap: balance;
+    }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .88em; }
+    .masthead { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .brand { font-family: Iowan Old Style, Palatino Linotype, Georgia, ui-serif, serif; font-size: 1.08rem; font-weight: 700; letter-spacing: -.02em; }
+    .prototype-mark { color: var(--muted); font-size: .76rem; }
+    .journey { margin: 32px 0 66px; }
+    .progress-copy { display: flex; justify-content: space-between; margin-bottom: 9px; color: var(--muted); font-size: .78rem; font-weight: 650; }
+    .progress { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+    .progress span { height: 5px; border-radius: 999px; background: #e8e2d7; }
+    .progress span.done { background: var(--accent); }
+    .screen { display: none; }
+    .screen.active { display: block; animation: reveal 360ms cubic-bezier(.16, 1, .3, 1) both; }
+    .lead { max-width: 65ch; margin-bottom: 34px; color: var(--muted); font-size: 1.06rem; }
+    .evidence { padding: 24px; margin: 0 0 28px; border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); }
+    .evidence p { margin-bottom: 7px; }
+    .evidence p:last-child { margin-bottom: 0; }
+    .evidence-label { color: var(--muted); font-size: .75rem; font-weight: 750; letter-spacing: .045em; text-transform: uppercase; }
+    .quote { max-width: 52ch; font-family: Iowan Old Style, Palatino Linotype, Georgia, ui-serif, serif; font-size: 1.17rem; font-weight: 650; line-height: 1.45; }
+    button {
+      width: 100%; min-height: 58px; padding: 15px 20px; border: 0; border-radius: 14px;
+      color: #fff; background: var(--accent); box-shadow: 0 8px 22px rgb(38 116 88 / 18%);
+      font: inherit; font-weight: 800; cursor: pointer;
+      transition: background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+    }
+    button:hover:not(:disabled) { background: var(--accent-hover); box-shadow: 0 10px 28px rgb(38 116 88 / 24%); transform: translateY(-1px); }
+    button:active:not(:disabled) { box-shadow: 0 4px 14px rgb(38 116 88 / 18%); transform: translateY(1px); }
+    button:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+    button:disabled { cursor: wait; opacity: .72; }
+    button.secondary { color: var(--accent); background: var(--mint); box-shadow: none; }
+    button.secondary:hover:not(:disabled) { color: #fff; background: var(--accent); box-shadow: 0 8px 22px rgb(38 116 88 / 16%); }
+    .result-count { color: var(--accent); font-variant-numeric: tabular-nums; }
+    .locations { padding: 0; margin: 30px 0; list-style: none; }
+    .locations li { padding: 19px 0; border-bottom: 1px solid var(--line); }
+    .locations li:first-child { border-top: 1px solid var(--line); }
+    .location-meta { margin-top: 7px; color: var(--muted); font-size: .84rem; }
+    .badge { display: inline-block; padding: 4px 9px; border-radius: 999px; color: var(--accent); background: var(--mint); font-size: .7rem; font-weight: 800; letter-spacing: .015em; }
+    .warning { padding: 17px 19px; margin-bottom: 28px; border-radius: 12px; color: var(--rose-ink); background: var(--rose); }
+    .report-header { display: flex; justify-content: space-between; gap: 20px; align-items: start; margin-bottom: 34px; }
+    .deadline { min-width: 180px; padding: 14px 16px; border-radius: 12px; color: var(--peach-ink); background: var(--peach); text-align: right; font-variant-numeric: tabular-nums; }
+    .deadline strong { display: block; font-size: 1.25rem; }
+    .fine-print { max-width: 65ch; margin-top: 24px; color: var(--muted); font-size: .78rem; }
+    @keyframes reveal {
+      from { opacity: .65; transform: translateY(8px); filter: blur(2px); }
+      to { opacity: 1; transform: translateY(0); filter: blur(0); }
+    }
+    @media (max-width: 560px) {
+      main { width: min(100% - 28px, 760px); padding-top: 22px; }
+      .journey { margin: 26px 0 48px; }
+      .evidence { padding: 20px; }
+      .report-header { display: block; }
+      .deadline { margin-top: 20px; text-align: left; }
+      .prototype-mark { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="masthead">
+      <span class="brand">Blast Radius</span>
+      <span class="prototype-mark">Throwaway prototype</span>
+    </header>
+    <div class="journey">
+      <div class="progress-copy"><span id="progress-label">Step 1 of 3</span><span>Impact report</span></div>
+      <div id="progress" class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="3" aria-valuenow="0" aria-labelledby="progress-label"></div>
+    </div>
+    <div id="screen" aria-live="polite"></div>
+  </main>
+
+  <script>
+    // Portable prototype logic. Pure data in, pure data out; no DOM access in this module.
+    const BlastRadiusLogic = (() => {
+      const initialState = () => ({
+        screen: "notice",
+        notice: null,
+        gateResults: [],
+        capabilityChange: null,
+        codeMatches: [],
+        unresolved: [],
+        impact: null,
+        collector: {
+          health: "healthy",
+          activeVersion: "collector-v1",
+          failureReason: null,
+          diagnosis: null,
+          proposedVersion: null,
+          validation: "not-run",
+          approval: "not-requested"
+        }
+      });
+
+      const notice = {
+        vendor: "OpenAI",
+        sourceUrl: "https://developers.openai.com/api/docs/assistants/migration",
+        retrievedAt: "2026-08-17T09:00:00Z",
+        excerpt: "The Assistants API will shut down on August 26, 2026."
+      };
+
+      const change = {
+        vendor: "OpenAI",
+        canonicalIdentifier: "openai.assistants",
+        changeType: "shutdown",
+        deadlineOriginal: "August 26, 2026",
+        deadlineIso: "2026-08-26"
+      };
+
+      const clone = value => JSON.parse(JSON.stringify(value));
+
+      const reducer = (currentState, action) => {
+        const state = clone(currentState);
+        switch (action.type) {
+          case "VERIFY_NOTICE":
+            state.notice = clone(notice);
+            state.gateResults = [
+              { name: "First-party source", passed: true },
+              { name: "Verbatim lifecycle evidence", passed: notice.excerpt.includes("Assistants API will shut down") },
+              { name: "Explicit full date", passed: true }
+            ];
+            if (!state.gateResults.every(gate => gate.passed)) return state;
+            state.capabilityChange = clone(change);
+            state.screen = "repository";
+            return state;
+
+          case "SCAN_REPOSITORY":
+            if (!state.capabilityChange) return state;
+            state.codeMatches = [
+              { file: "src/agents/support.ts", line: 37, evidenceStrength: "direct", context: "source", evidence: "openai.beta.assistants.create(...)" },
+              { file: "src/agents/thread.ts", line: 81, evidenceStrength: "alias-traced", context: "source", evidence: "assistants.create(...)" }
+            ];
+            state.unresolved = [
+              { file: "src/runtime.ts", line: 19, reason: "Computed property cannot be statically traced" }
+            ];
+            state.screen = "results";
+            return state;
+
+          case "OPEN_REPORT":
+            if (!state.capabilityChange || state.codeMatches.length === 0) return state;
+            state.impact = { capabilityChange: clone(state.capabilityChange), codeMatches: clone(state.codeMatches), status: "upcoming", daysRemaining: 9 };
+            state.screen = "report";
+            return state;
+
+          case "START_REPAIR":
+            if (!state.impact) return state;
+            state.collector.health = "drift-detected";
+            state.collector.failureReason = "Required field capability_identifier is empty";
+            state.screen = "drift";
+            return state;
+
+          case "PREPARE_REPAIR":
+            if (state.collector.health !== "drift-detected") return state;
+            state.collector.diagnosis = "Vendor page selector no longer reaches the capability heading";
+            state.collector.proposedVersion = "collector-v2";
+            state.collector.validation = "passed";
+            state.screen = "approval";
+            return state;
+
+          case "APPROVE_REPAIR":
+            if (state.collector.validation !== "passed") return state;
+            state.collector.approval = "approved";
+            state.collector.activeVersion = state.collector.proposedVersion;
+            state.collector.proposedVersion = null;
+            state.collector.health = "healthy";
+            state.collector.failureReason = null;
+            state.screen = "recovered";
+            return state;
+
+          case "RESTART":
+            return initialState();
+          default:
+            return state;
+        }
+      };
+      return { initialState, reducer };
+    })();
+
+    // Throwaway demo shell below this line.
+    let state = BlastRadiusLogic.initialState();
+    const escapeHtml = value => String(value ?? "").replace(/[&<>'"]/g, character => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+    })[character]);
+    const primaryAction = (type, label, kind = "") => `<button type="button" class="${kind}" data-action="${type}">${label}</button>`;
+    const locationList = matches => `<ul class="locations">${matches.map(match => `
+      <li>
+        <strong><code>${escapeHtml(match.file)}:${match.line}</code></strong>
+        <div><code>${escapeHtml(match.evidence)}</code></div>
+        <div class="location-meta"><span class="badge">${escapeHtml(match.evidenceStrength)}</span> ${escapeHtml(match.context)}</div>
+      </li>`).join("")}</ul>`;
+
+    const screens = {
+      notice: () => `
+        <section class="screen active">
+          <h1 tabindex="-1">Verify the shutdown</h1>
+          <p class="lead">Confirm that the change comes from the vendor and says exactly what will stop working.</p>
+          <div class="evidence">
+            <p class="evidence-label">OpenAI · Official documentation</p>
+            <p class="quote">“The Assistants API will shut down on August 26, 2026.”</p>
+            <p><code>developers.openai.com/api/docs/assistants/migration</code></p>
+          </div>
+          ${primaryAction("VERIFY_NOTICE", "Verify vendor notice")}
+        </section>`,
+      repository: () => `
+        <section class="screen active">
+          <h1 tabindex="-1">Find proven usage</h1>
+          <p class="lead">The notice passed all three assertion gates. Scan the local demo repository without sending its code anywhere.</p>
+          <div class="evidence">
+            <p class="evidence-label">Verified capability</p>
+            <p class="quote"><code>openai.assistants</code></p>
+            <p>Shutdown date: August 26, 2026</p>
+          </div>
+          ${primaryAction("SCAN_REPOSITORY", "Scan local repository")}
+        </section>`,
+      results: () => `
+        <section class="screen active">
+          <h1 tabindex="-1">We proved <span class="result-count">${state.codeMatches.length}</span> code locations.</h1>
+          <p class="lead">One dynamic usage remains unresolved. It is disclosed, never promoted to an Impact.</p>
+          ${primaryAction("OPEN_REPORT", "Open impact report")}
+        </section>`,
+      report: () => `
+        <section class="screen active">
+          <div class="report-header">
+            <div><h1 tabindex="-1">OpenAI Assistants API</h1><span class="badge">Confirmed Impact</span></div>
+            <div class="deadline"><span>Shuts down</span><strong>Aug 26, 2026</strong><span>9 days remaining</span></div>
+          </div>
+          ${locationList(state.impact.codeMatches)}
+          <div class="warning"><strong>1 unresolved usage</strong><br><code>src/runtime.ts:19</code> uses a computed property that cannot be proven statically.</div>
+          ${primaryAction("START_REPAIR", "See how collector recovery works", "secondary")}
+          <p class="fine-print">Repository analysis stayed local. Only official public vendor material was externally collected.</p>
+        </section>`,
+      drift: () => `
+        <section class="screen active">
+          <h1 tabindex="-1">The collector lost a required field</h1>
+          <p class="lead">Blast Radius stopped the result instead of publishing incomplete evidence. The active collector remains <code>collector-v1</code>.</p>
+          <div class="warning"><strong>Required-field collapse</strong><br><code>capability_identifier</code> is empty.</div>
+          ${primaryAction("PREPARE_REPAIR", "Diagnose and validate a repair")}
+        </section>`,
+      approval: () => `
+        <section class="screen active">
+          <h1 tabindex="-1">The proposed repair passed validation</h1>
+          <p class="lead">The selector now reaches the capability heading. Schema and required-field checks pass, but production is still on <code>collector-v1</code>.</p>
+          <div class="evidence">
+            <p class="evidence-label">Proposed change</p>
+            <p class="quote"><code>collector-v1 → collector-v2</code></p>
+            <p><span class="badge">Validation passed</span></p>
+          </div>
+          ${primaryAction("APPROVE_REPAIR", "Approve and activate collector-v2")}
+        </section>`,
+      recovered: () => `
+        <section class="screen active">
+          <h1 tabindex="-1">The collector recovered</h1>
+          <p class="lead"><code>collector-v2</code> is active only because validation passed and a human approved it.</p>
+          <div class="evidence"><p class="evidence-label">Collector health</p><p class="quote">Healthy rerun completed</p></div>
+          ${primaryAction("RESTART", "Restart three-click demo", "secondary")}
+        </section>`
+    };
+
+    const progressByScreen = { notice: 0, repository: 1, results: 2, report: 3, drift: 3, approval: 3, recovered: 3 };
+    const progressCopyByScreen = {
+      notice: "Step 1 of 3 · Verify notice",
+      repository: "Step 2 of 3 · Scan repository",
+      results: "Step 3 of 3 · Open report",
+      report: "Impact report complete",
+      drift: "Trust layer · Drift detected",
+      approval: "Trust layer · Approval required",
+      recovered: "Trust layer · Healthy"
+    };
+    let isFirstRender = true;
+    const render = () => {
+      const completed = progressByScreen[state.screen];
+      const progress = document.getElementById("progress");
+      document.getElementById("progress-label").textContent = progressCopyByScreen[state.screen];
+      progress.setAttribute("aria-valuenow", completed);
+      progress.innerHTML = [0, 1, 2]
+        .map(index => `<span class="${index < completed ? "done" : ""}"></span>`)
+        .join("");
+      document.getElementById("screen").innerHTML = screens[state.screen]();
+      if (!isFirstRender) document.querySelector("h1").focus({ preventScroll: true });
+      isFirstRender = false;
+      document.querySelector("[data-action]").addEventListener("click", event => {
+        const button = event.currentTarget;
+        const loadingLabels = {
+          VERIFY_NOTICE: "Verifying official evidence…",
+          SCAN_REPOSITORY: "Scanning locally…",
+          OPEN_REPORT: "Building impact report…",
+          START_REPAIR: "Simulating collector drift…",
+          PREPARE_REPAIR: "Validating proposed repair…",
+          APPROVE_REPAIR: "Activating approved repair…",
+          RESTART: "Restarting…"
+        };
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = loadingLabels[button.dataset.action];
+        window.setTimeout(() => {
+          state = BlastRadiusLogic.reducer(state, { type: button.dataset.action });
+          render();
+        }, 280);
+      });
+    };
+    render();
+  </script>
+</body>
+</html>
