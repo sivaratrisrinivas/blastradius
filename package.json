@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "lint": "oxlint src test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run build && node --test dist/test/issue-2.acceptance.test.js"
   },
@@ -15,6 +16,8 @@
     "typescript": "^5.9.2"
   },
   "devDependencies": {
-    "@types/node": "^24.3.0"
+    "@oxlint/plugins": "^1.78.0",
+    "@types/node": "^24.3.0",
+    "oxlint": "^1.78.0"
   }
 }
