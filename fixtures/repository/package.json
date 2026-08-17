@@ -1,0 +1,5 @@
+{
+  "name": "slack-upload-fixture",
+  "private": true,
+  "type": "module"
+}
