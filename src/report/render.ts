@@ -14,7 +14,8 @@ function escapeHtml(value: string): string {
   })[character] ?? character);
 }
 
-function deadlineStatus(deadlineIso: string, now: Date): DeadlineStatus {
+function deadlineStatus(deadlineIso: string | null, now: Date): DeadlineStatus {
+  if (deadlineIso === null) return "date-not-stated";
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const deadline = Date.parse(`${deadlineIso}T00:00:00.000Z`);
   return deadline < today ? "past" : "upcoming";
@@ -100,7 +101,7 @@ export function renderImpactReport(value: unknown, now = new Date()): string {
     <section class="screen" data-screen="report" hidden>
       <p class="badge">Confirmed Impact</p>
       <h1 tabindex="-1">Slack <code>files.upload</code></h1>
-      <div class="deadline"><span>Original deadline: ${escapeHtml(notice.deadlineOriginal)}</span><strong>${escapeHtml(status)}</strong><span>Normalized date: ${escapeHtml(notice.deadlineIso)}</span></div>
+      <div class="deadline"><span>Original deadline: ${escapeHtml(notice.deadlineOriginal)}</span><strong>${escapeHtml(status)}</strong><span>Normalized date: ${escapeHtml(notice.deadlineIso ?? "not stated")}</span></div>
       <div class="evidence">
         <p class="label">Authoritative evidence</p>
         <blockquote>${escapeHtml(scan.notice.excerpt)}</blockquote>

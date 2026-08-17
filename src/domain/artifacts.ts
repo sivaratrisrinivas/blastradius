@@ -14,7 +14,7 @@ export interface CapabilityChange {
   canonicalIdentifier: "slack.files.upload";
   changeType: ChangeType;
   deadlineOriginal: string;
-  deadlineIso: string;
+  deadlineIso: string | null;
 }
 
 export interface VendorNoticeArtifact {
@@ -74,10 +74,20 @@ const ALLOWED_CHANGE_TYPES = new Set<ChangeType>(["deprecation", "sunset", "shut
 const ALLOWED_EVIDENCE_STRENGTHS = new Set<EvidenceStrength>(["direct", "alias-traced"]);
 const ALLOWED_CONTEXTS = new Set<MatchContext>(["source", "test", "example"]);
 
-function exactDate(value: string): boolean {
+export function isExactDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+}
+
+function explicitDateIso(value: string): string | null {
+  const match = /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})$/.exec(value);
+  if (!match) return null;
+  const month = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(match[1]);
+  const date = new Date(Date.UTC(Number(match[3]), month, Number(match[2])));
+  return date.getUTCMonth() === month && date.getUTCDate() === Number(match[2])
+    ? date.toISOString().slice(0, 10)
+    : null;
 }
 
 function parseNotice(value: unknown): VendorNotice {
@@ -89,6 +99,9 @@ function parseNotice(value: unknown): VendorNotice {
   if (Number.isNaN(Date.parse(retrievedAt))) throw new Error("notice.retrievedAt must be an ISO timestamp");
   const excerpt = asString(value.excerpt, "notice.excerpt");
   if (!excerpt.includes("files.upload")) throw new Error("notice.excerpt must name Slack files.upload");
+  if (!/stopped functioning|deprecat|sunset|shut down|shutdown|remov/i.test(excerpt)) {
+    throw new Error("notice.excerpt must contain an allowed lifecycle statement");
+  }
   return { vendor: "Slack", sourceUrl, retrievedAt, excerpt };
 }
 
@@ -101,8 +114,17 @@ function parseCapabilityChange(value: unknown): CapabilityChange {
   const changeType = asString(value.changeType, "capabilityChange.changeType") as ChangeType;
   if (!ALLOWED_CHANGE_TYPES.has(changeType)) throw new Error("capabilityChange.changeType is not allowed");
   const deadlineOriginal = asString(value.deadlineOriginal, "capabilityChange.deadlineOriginal");
-  const deadlineIso = asString(value.deadlineIso, "capabilityChange.deadlineIso");
-  if (!exactDate(deadlineIso)) throw new Error("capabilityChange.deadlineIso must be an exact date");
+  const deadlineIso = value.deadlineIso === null ? null : asString(value.deadlineIso, "capabilityChange.deadlineIso");
+  if (deadlineIso === null) {
+    if (explicitDateIso(deadlineOriginal) !== null) throw new Error("exact deadline wording must have deadlineIso");
+  } else {
+    if (!isExactDate(deadlineIso) || explicitDateIso(deadlineOriginal) === null) {
+      throw new Error("capabilityChange.deadlineIso must match an exact deadline wording");
+    }
+    if (explicitDateIso(deadlineOriginal) !== deadlineIso) {
+      throw new Error("capabilityChange.deadlineIso does not match deadlineOriginal");
+    }
+  }
   return { vendor: "Slack", canonicalIdentifier: "slack.files.upload", changeType, deadlineOriginal, deadlineIso };
 }
 

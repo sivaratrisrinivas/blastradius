@@ -4,17 +4,13 @@ import {
   assertVendorNoticeArtifact,
   asString,
   isRecord,
+  isExactDate,
   type ChangeType,
   type VendorNoticeArtifact
 } from "../domain/artifacts.js";
 
 const SLACK_SOURCE_PREFIX = "https://docs.slack.dev/";
-
-function exactDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
-}
+const SLACK_NOTICE_EXCERPT = "The files.upload method stopped functioning on November 12, 2025.";
 
 export function collectSlackNotice(fixturePath: string): VendorNoticeArtifact {
   let fixture: unknown;
@@ -32,18 +28,16 @@ export function collectSlackNotice(fixturePath: string): VendorNoticeArtifact {
   const capabilityIdentifier = asString(fixture.capabilityIdentifier, "capabilityIdentifier");
   const changeType = asString(fixture.changeType, "changeType") as ChangeType;
   const deadlineOriginal = asString(fixture.deadlineOriginal, "deadlineOriginal");
-  const deadlineIso = asString(fixture.deadlineIso, "deadlineIso");
+  const deadlineIso = fixture.deadlineIso === null ? null : asString(fixture.deadlineIso, "deadlineIso");
 
   if (vendor !== "Slack" || !sourceUrl.startsWith(SLACK_SOURCE_PREFIX)) {
     throw new Error("collection fixture is not an allowed first-party Slack source");
   }
-  if (!excerpt.includes("files.upload") || !/stopped functioning|deprecat|sunset|shut down|shutdown|remov/i.test(excerpt)) {
-    throw new Error("collection excerpt does not prove an allowed lifecycle change");
-  }
+  if (excerpt !== SLACK_NOTICE_EXCERPT) throw new Error("collection excerpt is not the committed verbatim Slack evidence");
   if (capabilityIdentifier !== "slack.files.upload") {
     throw new Error("collection fixture does not name Slack files.upload");
   }
-  if (changeType !== "shutdown" || !exactDate(deadlineIso)) {
+  if (changeType !== "shutdown" || (deadlineIso !== null && !isExactDate(deadlineIso))) {
     throw new Error("collection fixture does not contain an allowed change and exact deadline");
   }
 

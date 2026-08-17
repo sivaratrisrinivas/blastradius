@@ -4,6 +4,7 @@ import ts from "typescript";
 import {
   type CapabilityChange,
   type CodeMatch,
+  type AnalysisLimitation,
   type MatchContext,
   type ScanArtifact,
   type VendorNoticeArtifact
@@ -66,22 +67,23 @@ function clientVariables(sourceFile: ts.SourceFile, importedClients: Set<string>
   return clients;
 }
 
-function slackUploadReceiver(expression: ts.Expression): string | null {
+function slackClientVariableForUpload(expression: ts.Expression): string | null {
   if (!ts.isPropertyAccessExpression(expression) || expression.name.text !== "upload") return null;
   const filesAccess = expression.expression;
   if (!ts.isPropertyAccessExpression(filesAccess) || filesAccess.name.text !== "files") return null;
   return ts.isIdentifier(filesAccess.expression) ? filesAccess.expression.text : null;
 }
 
-function matchesInFile(file: string, repositoryRoot: string, capabilityChange: CapabilityChange): CodeMatch[] {
+function matchesInFile(file: string, repositoryRoot: string, capabilityChange: CapabilityChange): { matches: CodeMatch[]; limitations: AnalysisLimitation[] } {
   const content = readFileSync(file, "utf8");
   const sourceFile = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, SOURCE_EXTENSIONS.get(extname(file)));
   const importedClients = importedSlackClients(sourceFile);
   const clients = clientVariables(sourceFile, importedClients);
   const matches: CodeMatch[] = [];
+  const limitations: AnalysisLimitation[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
-      const receiver = slackUploadReceiver(node.expression);
+      const receiver = slackClientVariableForUpload(node.expression);
       if (receiver && clients.has(receiver)) {
         const lineStart = sourceFile.getLineStarts()[sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line];
         const lineEnd = content.indexOf("\n", lineStart);
@@ -94,12 +96,24 @@ function matchesInFile(file: string, repositoryRoot: string, capabilityChange: C
           context: contextFor(relative(repositoryRoot, file)),
           evidence: content.slice(lineStart, lineEnd === -1 ? content.length : lineEnd).trim()
         });
+      } else if (receiver) {
+        limitations.push({
+          file: relative(repositoryRoot, file).replaceAll("\\", "/"),
+          line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
+          reason: "The files.upload receiver is not proven to be a Slack client."
+        });
+      } else if (ts.isElementAccessExpression(node.expression) && ts.isPropertyAccessExpression(node.expression.expression) && node.expression.expression.name.text === "files") {
+        limitations.push({
+          file: relative(repositoryRoot, file).replaceAll("\\", "/"),
+          line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
+          reason: "Computed files method access cannot be statically proven."
+        });
       }
     }
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
-  return matches;
+  return { matches, limitations };
 }
 
 export function scanLocalRepository(repositoryPath: string, notice: VendorNoticeArtifact): ScanArtifact {
@@ -108,14 +122,16 @@ export function scanLocalRepository(repositoryPath: string, notice: VendorNotice
     throw new Error("scan requires one repository root package.json");
   }
 
-  const codeMatches = sourceFiles(repositoryRoot).flatMap(file => matchesInFile(file, repositoryRoot, notice.capabilityChange));
+  const fileResults = sourceFiles(repositoryRoot).map(file => matchesInFile(file, repositoryRoot, notice.capabilityChange));
+  const codeMatches = fileResults.flatMap(result => result.matches);
+  const limitations = fileResults.flatMap(result => result.limitations);
   return {
     schemaVersion: 1,
     kind: "scan-result",
     notice: notice.notice,
     capabilityChange: notice.capabilityChange,
     codeMatches,
-    limitations: [],
+    limitations,
     impact: codeMatches.length > 0 ? { capabilityChange: notice.capabilityChange, codeMatches } : null
   };
 }
