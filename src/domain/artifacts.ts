@@ -1,4 +1,6 @@
 export const ARTIFACT_SCHEMA_VERSION = 1 as const;
+export const SLACK_VENDOR_NOTICE_SOURCE_URL = "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/";
+export const SLACK_VENDOR_NOTICE_EXCERPT = "The files.upload method stopped functioning on November 12, 2025.";
 
 export type ChangeType = "deprecation" | "sunset" | "shutdown" | "removal";
 
@@ -94,14 +96,11 @@ function parseNotice(value: unknown): VendorNotice {
   if (!isRecord(value)) throw new Error("notice must be an object");
   if (value.vendor !== "Slack") throw new Error("notice.vendor must be Slack");
   const sourceUrl = asString(value.sourceUrl, "notice.sourceUrl");
-  if (!sourceUrl.startsWith("https://docs.slack.dev/")) throw new Error("notice.sourceUrl must be first-party Slack documentation");
+  if (sourceUrl !== SLACK_VENDOR_NOTICE_SOURCE_URL) throw new Error("notice.sourceUrl is not the curated Slack source");
   const retrievedAt = asString(value.retrievedAt, "notice.retrievedAt");
   if (Number.isNaN(Date.parse(retrievedAt))) throw new Error("notice.retrievedAt must be an ISO timestamp");
   const excerpt = asString(value.excerpt, "notice.excerpt");
-  if (!excerpt.includes("files.upload")) throw new Error("notice.excerpt must name Slack files.upload");
-  if (!/stopped functioning|deprecat|sunset|shut down|shutdown|remov/i.test(excerpt)) {
-    throw new Error("notice.excerpt must contain an allowed lifecycle statement");
-  }
+  if (excerpt !== SLACK_VENDOR_NOTICE_EXCERPT) throw new Error("notice.excerpt is not the curated Slack evidence");
   return { vendor: "Slack", sourceUrl, retrievedAt, excerpt };
 }
 

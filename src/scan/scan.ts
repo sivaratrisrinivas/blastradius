@@ -74,6 +74,13 @@ function slackClientVariableForUpload(expression: ts.Expression): string | null 
   return ts.isIdentifier(filesAccess.expression) ? filesAccess.expression.text : null;
 }
 
+function repositoryLocation(file: string, repositoryRoot: string, sourceFile: ts.SourceFile, node: ts.Node): { file: string; line: number } {
+  return {
+    file: relative(repositoryRoot, file).replaceAll("\\", "/"),
+    line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
+  };
+}
+
 function matchesInFile(file: string, repositoryRoot: string, capabilityChange: CapabilityChange): { matches: CodeMatch[]; limitations: AnalysisLimitation[] } {
   const content = readFileSync(file, "utf8");
   const sourceFile = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, SOURCE_EXTENSIONS.get(extname(file)));
@@ -81,6 +88,14 @@ function matchesInFile(file: string, repositoryRoot: string, capabilityChange: C
   const clients = clientVariables(sourceFile, importedClients);
   const matches: CodeMatch[] = [];
   const limitations: AnalysisLimitation[] = [];
+  const unresolvedLocations = new Set<string>();
+  const addLimitation = (node: ts.Node, reason: string): void => {
+    const location = repositoryLocation(file, repositoryRoot, sourceFile, node);
+    const key = `${location.file}:${location.line}:${reason}`;
+    if (unresolvedLocations.has(key)) return;
+    unresolvedLocations.add(key);
+    limitations.push({ ...location, reason });
+  };
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
       const receiver = slackClientVariableForUpload(node.expression);
@@ -97,22 +112,20 @@ function matchesInFile(file: string, repositoryRoot: string, capabilityChange: C
           evidence: content.slice(lineStart, lineEnd === -1 ? content.length : lineEnd).trim()
         });
       } else if (receiver) {
-        limitations.push({
-          file: relative(repositoryRoot, file).replaceAll("\\", "/"),
-          line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
-          reason: "The files.upload receiver is not proven to be a Slack client."
-        });
+        addLimitation(node, "The files.upload receiver is not proven to be a Slack client.");
       } else if (ts.isElementAccessExpression(node.expression) && ts.isPropertyAccessExpression(node.expression.expression) && node.expression.expression.name.text === "files") {
-        limitations.push({
-          file: relative(repositoryRoot, file).replaceAll("\\", "/"),
-          line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
-          reason: "Computed files method access cannot be statically proven."
-        });
+        addLimitation(node, "Computed files method access cannot be statically proven.");
       }
+    }
+    if (ts.isPropertyAccessExpression(node) && node.name.text === "upload" && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "files" && !ts.isCallExpression(node.parent)) {
+      addLimitation(node, "A files.upload reference was not used as a directly provable call.");
     }
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
+  if (importedClients.size > 0 && matches.length === 0 && limitations.length === 0) {
+    addLimitation(sourceFile, "This file imports the Slack client, but no supported direct files.upload call was proven.");
+  }
   return { matches, limitations };
 }
 

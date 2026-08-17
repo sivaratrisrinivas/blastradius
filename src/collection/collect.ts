@@ -5,12 +5,11 @@ import {
   asString,
   isRecord,
   isExactDate,
+  SLACK_VENDOR_NOTICE_EXCERPT,
+  SLACK_VENDOR_NOTICE_SOURCE_URL,
   type ChangeType,
   type VendorNoticeArtifact
 } from "../domain/artifacts.js";
-
-const SLACK_SOURCE_PREFIX = "https://docs.slack.dev/";
-const SLACK_NOTICE_EXCERPT = "The files.upload method stopped functioning on November 12, 2025.";
 
 export function collectSlackNotice(fixturePath: string): VendorNoticeArtifact {
   let fixture: unknown;
@@ -30,14 +29,14 @@ export function collectSlackNotice(fixturePath: string): VendorNoticeArtifact {
   const deadlineOriginal = asString(fixture.deadlineOriginal, "deadlineOriginal");
   const deadlineIso = fixture.deadlineIso === null ? null : asString(fixture.deadlineIso, "deadlineIso");
 
-  if (vendor !== "Slack" || !sourceUrl.startsWith(SLACK_SOURCE_PREFIX)) {
+  if (vendor !== "Slack" || sourceUrl !== SLACK_VENDOR_NOTICE_SOURCE_URL) {
     throw new Error("collection fixture is not an allowed first-party Slack source");
   }
-  if (excerpt !== SLACK_NOTICE_EXCERPT) throw new Error("collection excerpt is not the committed verbatim Slack evidence");
+  if (excerpt !== SLACK_VENDOR_NOTICE_EXCERPT) throw new Error("collection excerpt is not the committed verbatim Slack evidence");
   if (capabilityIdentifier !== "slack.files.upload") {
     throw new Error("collection fixture does not name Slack files.upload");
   }
-  if (changeType !== "shutdown" || (deadlineIso !== null && !isExactDate(deadlineIso))) {
+  if (changeType !== "shutdown" || deadlineIso === null || !isExactDate(deadlineIso)) {
     throw new Error("collection fixture does not contain an allowed change and exact deadline");
   }
 
