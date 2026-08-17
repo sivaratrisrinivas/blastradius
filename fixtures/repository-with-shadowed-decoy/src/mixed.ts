@@ -43,3 +43,34 @@ var moduleSlack = new WebClient(process.env.SLACK_TOKEN);
 export function varShadowedDecoy() {
   return moduleSlack.files.upload("var");
 }
+
+export function destructuredDecoy() {
+  const { slack } = { slack: { files: { upload(value: string) { return value; } } } };
+  return slack.files.upload("destructured");
+}
+
+export function destructuredAssignmentDecoy() {
+  let mutableSlack = new WebClient(process.env.SLACK_TOKEN);
+  ({ mutableSlack } = { mutableSlack: { files: { upload(value: string) { return value; } } } });
+  return mutableSlack.files.upload("destructured assignment");
+}
+
+export function parameterDestructuredDecoy({ slack }: { slack: { files: { upload(value: string): string } } }) {
+  return slack.files.upload("parameter");
+}
+
+export function switchDecoy(value: string) {
+  switch (value) {
+    case "decoy":
+      const slack = { files: { upload(value: string) { return value; } } };
+      return slack.files.upload("switch");
+    default:
+      return value;
+  }
+}
+
+export function destructuredLoopAssignmentDecoy(decoys: Array<{ loopSlack: { files: { upload(value: string): string } } }>) {
+  let loopSlack = new WebClient(process.env.SLACK_TOKEN);
+  for ({ loopSlack } of decoys) { /* the decoy assignment is intentionally unresolved */ }
+  return loopSlack.files.upload("destructured loop assignment");
+}

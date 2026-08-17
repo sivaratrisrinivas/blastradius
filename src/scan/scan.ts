@@ -119,6 +119,30 @@ function bindingForName(scope: Scope | null, name: string): Binding | undefined 
   return undefined;
 }
 
+function bindingNames(name: ts.BindingName): string[] {
+  if (ts.isIdentifier(name)) return [name.text];
+  return name.elements.flatMap(element => ts.isBindingElement(element) ? bindingNames(element.name) : []);
+}
+
+function assignedIdentifiers(expression: ts.Expression): ts.Identifier[] {
+  if (ts.isIdentifier(expression)) return [expression];
+  if (ts.isParenthesizedExpression(expression)) return assignedIdentifiers(expression.expression);
+  if (ts.isArrayLiteralExpression(expression)) {
+    return expression.elements.flatMap(element => {
+      if (ts.isSpreadElement(element)) return assignedIdentifiers(element.expression);
+      return ts.isOmittedExpression(element) ? [] : assignedIdentifiers(element);
+    });
+  }
+  if (ts.isObjectLiteralExpression(expression)) {
+    return expression.properties.flatMap(property => {
+      if (ts.isShorthandPropertyAssignment(property)) return [property.name];
+      if (ts.isPropertyAssignment(property)) return assignedIdentifiers(property.initializer);
+      return ts.isSpreadAssignment(property) ? assignedIdentifiers(property.expression) : [];
+    });
+  }
+  return [];
+}
+
 function createScopeModel(sourceFile: ts.SourceFile, importedSlackConstructorNames: Set<string>): ScopeModel {
   const scopes: Scope[] = [];
   const scopeForNode = new Map<ts.Node, Scope>();
@@ -145,10 +169,17 @@ function createScopeModel(sourceFile: ts.SourceFile, importedSlackConstructorNam
   const addVariableBindings = (scope: Scope, declarationList: ts.VariableDeclarationList): void => {
     const targetScope = declarationList.flags & ts.NodeFlags.BlockScoped ? scope : nearestVarScope(scope);
     for (const declaration of declarationList.declarations) {
-      if (ts.isIdentifier(declaration.name)) {
-        addBinding(targetScope, declaration.name.text, { kind: "unknown", declaration });
+      for (const name of bindingNames(declaration.name)) {
+        addBinding(targetScope, name, {
+          kind: "unknown",
+          declaration: ts.isIdentifier(declaration.name) ? declaration : undefined
+        });
       }
     }
+  };
+
+  const addUnknownBinding = (scope: Scope, name: ts.BindingName): void => {
+    for (const bindingName of bindingNames(name)) addBinding(scope, bindingName, { kind: "unknown" });
   };
 
   const collectStatementBindings = (scope: Scope, statement: ts.Statement): void => {
@@ -205,7 +236,7 @@ function createScopeModel(sourceFile: ts.SourceFile, importedSlackConstructorNam
       const functionScope = createScope(scope, true);
       scopeForNode.set(node, functionScope);
       for (const parameter of node.parameters) {
-        if (ts.isIdentifier(parameter.name)) addBinding(functionScope, parameter.name.text, { kind: "unknown" });
+        addUnknownBinding(functionScope, parameter.name);
       }
       ts.forEachChild(node, child => visit(child, functionScope));
       return;
@@ -225,10 +256,15 @@ function createScopeModel(sourceFile: ts.SourceFile, importedSlackConstructorNam
     if (ts.isCatchClause(node)) {
       const catchScope = createScope(scope);
       scopeForNode.set(node, catchScope);
-      if (node.variableDeclaration && ts.isIdentifier(node.variableDeclaration.name)) {
-        addBinding(catchScope, node.variableDeclaration.name.text, { kind: "unknown" });
-      }
+      if (node.variableDeclaration) addUnknownBinding(catchScope, node.variableDeclaration.name);
       ts.forEachChild(node, child => visit(child, catchScope));
+      return;
+    }
+    if (ts.isSwitchStatement(node)) {
+      const switchScope = createScope(scope);
+      scopeForNode.set(node, switchScope);
+      for (const clause of node.caseBlock.clauses) collectScopeBindings(switchScope, clause.statements);
+      ts.forEachChild(node, child => visit(child, switchScope));
       return;
     }
     scopeForNode.set(node, scope);
@@ -253,8 +289,8 @@ function createScopeModel(sourceFile: ts.SourceFile, importedSlackConstructorNam
     if (binding?.kind === "slack-client") binding.kind = "unknown";
   };
   const markReassignments = (node: ts.Node): void => {
-    if (ts.isBinaryExpression(node) && ts.isIdentifier(node.left) && ASSIGNMENT_OPERATOR_KINDS.has(node.operatorToken.kind)) {
-      markReassignedIdentifier(node.left);
+    if (ts.isBinaryExpression(node) && ASSIGNMENT_OPERATOR_KINDS.has(node.operatorToken.kind)) {
+      for (const identifier of assignedIdentifiers(node.left)) markReassignedIdentifier(identifier);
     }
     if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
       (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) &&
@@ -263,6 +299,9 @@ function createScopeModel(sourceFile: ts.SourceFile, importedSlackConstructorNam
     }
     if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) && ts.isIdentifier(node.initializer)) {
       markReassignedIdentifier(node.initializer);
+    }
+    if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) && !ts.isVariableDeclarationList(node.initializer)) {
+      for (const identifier of assignedIdentifiers(node.initializer)) markReassignedIdentifier(identifier);
     }
     ts.forEachChild(node, markReassignments);
   };

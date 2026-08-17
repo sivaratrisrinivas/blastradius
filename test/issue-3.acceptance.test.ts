@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,11 +12,15 @@ const slackFixture = resolve(repositoryRoot, "fixtures/slack-notice.json");
 const decoyFixtureRepository = resolve(repositoryRoot, "fixtures/repository-decoys");
 const shadowedDecoyFixtureRepository = resolve(repositoryRoot, "fixtures/repository-with-shadowed-decoy");
 
-function runCli(args: string[]): string {
-  const result = spawnSync(process.execPath, [cliPath, ...args], {
+function runCliResult(args: string[]) {
+  return spawnSync(process.execPath, [cliPath, ...args], {
     cwd: repositoryRoot,
     encoding: "utf8"
   });
+}
+
+function runCli(args: string[]): string {
+  const result = runCliResult(args);
   assert.equal(result.status, 0, result.stderr);
   return result.stdout;
 }
@@ -49,6 +52,12 @@ test("scan rejects Slack-shaped decoys and creates no Impact", () => {
   assert.equal(result.codeMatches.length, 0);
   assert.equal(result.impact, null);
   assert.ok(result.limitations.length >= 2);
+
+  const reportPath = resolve(outputDirectory, "impact-report.html");
+  const reportResult = runCliResult(["report", "--scan", scanPath, "--output", reportPath]);
+  assert.notEqual(reportResult.status, 0);
+  assert.match(reportResult.stderr, /cannot generate an Impact Report without a proven CodeMatch/);
+  assert.equal(existsSync(reportPath), false);
 });
 
 test("scan preserves a proven Slack match across shadowing, reassignment, and unsupported scopes", () => {
@@ -85,6 +94,6 @@ test("scan preserves a proven Slack match across shadowing, reassignment, and un
       .filter((limitation: { file: string }) => limitation.file === "src/mixed.ts")
       .map((limitation: { line: number }) => limitation.line)
       .sort((left: number, right: number) => left - right),
-    [15, 21, 26, 34, 44]
+    [15, 21, 26, 34, 44, 49, 55, 59, 66, 75]
   );
 });
