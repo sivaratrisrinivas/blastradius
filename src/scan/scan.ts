@@ -40,7 +40,7 @@ function contextFor(file: string): MatchContext {
 function importedSlackClients(sourceFile: ts.SourceFile): Set<string> {
   const imported = new Set<string>();
   sourceFile.forEachChild(node => {
-    if (!ts.isImportDeclaration(node) || node.moduleSpecifier.getText(sourceFile) !== '"@slack/web-api"') return;
+    if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier) || node.moduleSpecifier.text !== "@slack/web-api") return;
     const bindings = node.importClause?.namedBindings;
     if (!bindings || !ts.isNamedImports(bindings)) return;
     for (const element of bindings.elements) {
@@ -50,6 +50,20 @@ function importedSlackClients(sourceFile: ts.SourceFile): Set<string> {
     }
   });
   return imported;
+}
+
+function hasSlackImport(sourceFile: ts.SourceFile): boolean {
+  return sourceFile.statements.some(node => ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === "@slack/web-api");
+}
+
+function hasSlackRequire(sourceFile: ts.SourceFile): boolean {
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "require" && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0]) && node.arguments[0].text === "@slack/web-api") found = true;
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
 }
 
 function clientVariables(sourceFile: ts.SourceFile, importedClients: Set<string>): Set<string> {
@@ -75,9 +89,12 @@ function slackClientVariableForUpload(expression: ts.Expression): string | null 
 }
 
 function dynamicFilesUpload(expression: ts.Expression): boolean {
-  if (!ts.isElementAccessExpression(expression) || !ts.isStringLiteral(expression.argumentExpression) || expression.argumentExpression.text !== "upload") return false;
+  if (ts.isPropertyAccessExpression(expression) && expression.name.text === "upload" && ts.isElementAccessExpression(expression.expression)) {
+    return ts.isStringLiteral(expression.expression.argumentExpression) && expression.expression.argumentExpression.text === "files";
+  }
+  if (!ts.isElementAccessExpression(expression)) return false;
   const filesAccess = expression.expression;
-  return ts.isElementAccessExpression(filesAccess) && ts.isStringLiteral(filesAccess.argumentExpression) && filesAccess.argumentExpression.text === "files";
+  return (ts.isElementAccessExpression(filesAccess) || ts.isPropertyAccessExpression(filesAccess)) && ((ts.isElementAccessExpression(filesAccess) && ts.isStringLiteral(filesAccess.argumentExpression) && filesAccess.argumentExpression.text === "files") || (ts.isPropertyAccessExpression(filesAccess) && filesAccess.name.text === "files"));
 }
 
 function repositoryLocation(file: string, repositoryRoot: string, sourceFile: ts.SourceFile, node: ts.Node): { file: string; line: number } {
@@ -129,7 +146,7 @@ function matchesInFile(file: string, repositoryRoot: string, capabilityChange: C
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
-  if (importedClients.size > 0 && matches.length === 0 && limitations.length === 0) {
+  if ((hasSlackImport(sourceFile) || hasSlackRequire(sourceFile)) && matches.length === 0 && limitations.length === 0) {
     addLimitation(sourceFile, "This file imports the Slack client, but no supported direct files.upload call was proven.");
   }
   return { matches, limitations };

@@ -39,6 +39,8 @@ test("collect stores a versioned Slack VendorNotice artifact", () => {
   const artifact = JSON.parse(readFileSync(outputPath, "utf8"));
 
   assert.match(output, /Verified Slack VendorNotice/);
+  assert.match(output, /The files\.upload method stopped functioning on November 12, 2025\./);
+  assert.match(output, /2025-11-12/);
   assert.equal(artifact.schemaVersion, 1);
   assert.equal(artifact.kind, "vendor-notice");
   assert.equal(artifact.notice.vendor, "Slack");
@@ -69,6 +71,10 @@ test("scan proves one direct Slack CodeMatch and constructs one Impact", () => {
   const result = JSON.parse(readFileSync(scanPath, "utf8"));
 
   assert.match(output, /1 proven CodeMatch/);
+  assert.match(output, /return slack\.files\.upload/);
+  assert.match(output, /src\/slack-upload\.ts:6/);
+  assert.match(output, /November 12, 2025/);
+  assert.match(output, /Repository analysis stayed local/);
   assert.equal(result.schemaVersion, 1);
   assert.equal(result.kind, "scan-result");
   assert.deepEqual(result.codeMatches, [
