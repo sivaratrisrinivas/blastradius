@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Issue #3 — Reject Slack-shaped calls without Slack provenance</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1d212b;
+    --border: #2a2f3a;
+    --text: #e6e9ef;
+    --muted: #9aa3b2;
+    --green: #3fb950;
+    --green-bg: rgba(63,185,80,.12);
+    --amber: #d29922;
+    --amber-bg: rgba(210,153,34,.12);
+    --red: #f85149;
+    --red-bg: rgba(248,81,73,.12);
+    --blue: #58a6ff;
+    --mono: ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.5;
+    padding: 40px 20px;
+  }
+  main { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
+  h2 { font-size: 15px; font-weight: 650; margin: 36px 0 12px; color: var(--blue); }
+  .sub { color: var(--muted); font-size: 14px; margin-top: 6px; }
+  .invariant {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--amber);
+    background: var(--amber-bg);
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-top: 20px;
+  }
+  .invariant strong { color: var(--amber); }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 16px;
+    overflow-x: auto;
+  }
+  .mermaid { background: transparent; }
+  pre {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  code { font-family: var(--mono); font-size: 12.5px; }
+  td code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+  .pass { color: var(--green); }
+  .fail { color: var(--red); }
+  .pass-row { background: var(--green-bg); }
+  .foot { color: var(--muted); font-size: 12.5px; margin-top: 28px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Issue #3 — Reject Slack-shaped calls without Slack provenance</h1>
+  <p class="sub">Blast Radius · proof-first invariant · implemented and green (6/6 acceptance tests)</p>
+
+  <div class="invariant">
+    <strong>Blast Radius may miss something it cannot prove; it must never present something it cannot prove as an Impact.</strong>
+    <div style="margin-top:4px; color:var(--muted)">So <code>slack.files.upload(...)</code> counts only when the receiver provably derives from the affected Slack capability — never from its shape alone.</div>
+  </div>
+
+  <h2>The proof gate at every call site</h2>
+  <div class="panel">
+    <pre class="mermaid">
+flowchart TD
+    CALL["call site: slack.files.upload(...)"] --> SHAPE{"receiver is a
+    Slack-shaped files.upload?"}
+    SHAPE -- "no" --> SKIP["ignore
+    (not Slack-shaped)"]
+    SHAPE -- "yes" --> PROVEN{"receiver binding is
+    a *proven* Slack client?"}
+    PROVEN -- "yes" --> MATCH["CodeMatch (direct)
+    feeds Impact"]:::pass
+    PROVEN -- "no" --> LIM["Limitation:
+    receiver is not proven
+    to be a Slack client"]:::fail
+    classDef pass fill:#14261a,stroke:#3fb950,color:#7ee787
+    classDef fail fill:#261418,stroke:#f85149,color:#ffa198
+    </pre>
+  </div>
+
+  <h2>How a binding earns — or loses — provenance</h2>
+  <div class="panel">
+<pre>WebClient  ← imported from "@slack/web-api"        (slack-constructor)
+slack      ← new WebClient(...)                    (slack-client)   ✔ proven
+slack      ← reassigned / shadowed / destructured  (unknown)        ✘ demoted</pre>
+  </div>
+
+  <h2>Decoys rejected by the gate — shape alone never wins</h2>
+  <div class="panel">
+    <table>
+      <thead>
+        <tr><th>Decoy</th><th>Why it fails the gate</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>// slack.files.upload</code> comment</td><td class="fail">not a call expression at all</td></tr>
+        <tr><td><code>"slack.files.upload"</code> string / substring</td><td class="fail">not a call expression at all</td></tr>
+        <tr><td><code>unrelatedIdentifier.files.upload(...)</code></td><td class="fail">binding kind <code>unknown</code></td></tr>
+        <tr><td><code>unrelatedPackageClient.files.upload(...)</code></td><td class="fail"><code>other-sdk</code>, never imported from <code>@slack/web-api</code></td></tr>
+        <tr><td>shadowed / reassigned / loop / catch / var / destructured <code>slack</code></td><td class="fail">provenance demoted to <code>unknown</code> → becomes a limitation, not a match</td></tr>
+        <tr class="pass-row"><td><code>slack.files.upload(...)</code> with <code>slack = new WebClient(...)</code></td><td class="pass">survives: the one proven CodeMatch and Impact</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="foot">Source: <code>src/scan/scan.ts</code> · fixtures <code>repository-decoys</code> &amp; <code>repository-with-shadowed-decoy</code> · test <code>issue-3.acceptance.test.ts</code></p>
+</main>
+<script>mermaid.initialize({ startOnLoad: true, theme: "dark", themeVariables: { background: "#171a21", fontFamily: "ui-monospace, Consolas, monospace" } });</script>
+</body>
+</html>
