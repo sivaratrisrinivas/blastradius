@@ -10,15 +10,21 @@ That rule is the most important part of the product. A name that looks like a ve
 
 ## What the prototype does
 
-The current command-line prototype demonstrates Slack's `files.upload` shutdown:
+The current command-line prototype demonstrates three vendor changes:
 
-1. `collect` validates a committed, first-party Slack notice fixture and writes a versioned `VendorNotice` artifact.
-2. `scan` reads that notice and scans one local JavaScript or TypeScript repository for proven uses of `slack.files.upload`. It prints proven `CodeMatch` records and unresolved uses in separate sections.
+| Vendor | Affected capability | Deadline |
+| --- | --- | --- |
+| Slack | `files.upload` | November 12, 2025 |
+| OpenAI | Assistants API | August 26, 2026 |
+| Cloudflare | Legacy Workers KV namespace routes | October 15, 2026 |
+
+1. `collect` validates a committed, first-party vendor notice fixture and writes a versioned `VendorNotice` artifact.
+2. `scan` reads that notice and scans one local JavaScript or TypeScript repository for proven uses of the affected capability. Cloudflare also recognizes exact legacy KV route literals and structured JSON/TOML configuration values. It prints proven `CodeMatch` records and unresolved uses in separate sections.
 3. `report` creates a local HTML Impact Report, but only when the scan contains at least one proven `CodeMatch`. When limitations exist, the report shows them in their own section.
 
-The repository scan stays on the local machine. The current demonstration uses stored fixture data for the vendor notice; it does not send repository source, paths, snippets, or scan artifacts to an external service.
+The repository scan stays on the local machine. The current demonstrations use stored fixture data for the vendor notices; they do not send repository source, paths, snippets, or scan artifacts to an external service.
 
-The product contract also describes future notice examples for OpenAI and Cloudflare. The end-to-end CLI path currently implemented in this repository is the Slack example.
+The same offline CLI path is used for all three MVP examples. The Cloudflare matcher recognizes `/accounts/{account_id}/workers/namespaces/*`; the replacement `/storage/kv/namespaces/*` route is deliberately not matched.
 
 ## Quick start
 
@@ -58,6 +64,24 @@ node dist/src/cli.js report \
 
 Open `/tmp/blast-radius-demo/impact-report.html` in a browser. The report shows the source notice, its deadline, the proven code location, and any analysis limitations in separate sections.
 
+The OpenAI and Cloudflare examples use the same commands with their fixtures and repositories:
+
+```bash
+node dist/src/cli.js collect \
+  --fixture fixtures/openai-notice.json \
+  --output /tmp/blast-radius-demo/openai-notice.json
+node dist/src/cli.js scan fixtures/repository-openai \
+  --collection /tmp/blast-radius-demo/openai-notice.json \
+  --output /tmp/blast-radius-demo/openai-scan.json
+
+node dist/src/cli.js collect \
+  --fixture fixtures/cloudflare-kv-notice.json \
+  --output /tmp/blast-radius-demo/cloudflare-notice.json
+node dist/src/cli.js scan fixtures/repository-cloudflare \
+  --collection /tmp/blast-radius-demo/cloudflare-notice.json \
+  --output /tmp/blast-radius-demo/cloudflare-scan.json
+```
+
 If the scanner finds usage that it cannot prove, the scan still succeeds. Its output includes an `Analysis Limitations` section with the repository-relative file, one-based line number, and a plain-English reason. Those locations are not counted as proven matches. A repository with only unresolved usage therefore has no Impact, but the limitation is still visible in the scan output and stored JSON artifact.
 
 ## How evidence works
@@ -83,11 +107,23 @@ await slack.files.upload({ channels: channel, file });
 
 The receiver must resolve to a `WebClient` imported from `@slack/web-api`. Comments, strings, unrelated identifiers, similarly named clients from other packages, method shape alone, shadowed bindings, reassigned bindings, and unsupported dynamic access do not become CodeMatches. Those cases are either ignored or disclosed as limitations.
 
+For OpenAI, the scanner proves `beta.assistants.create` calls whose receiver resolves to an OpenAI client. It supports the same-file aliases, destructuring, and assignment chains covered by the acceptance fixtures. For Cloudflare, it proves exact legacy Workers KV namespace URL literals in source code and supported JSON/TOML configuration values. It does not match the replacement `/storage/kv/namespaces/*` route.
+
+## Accessible local report
+
+The HTML report presents one clear three-action workflow:
+
+1. Verify the vendor notice.
+2. Scan the local repository.
+3. Open the Impact Report.
+
+Each action has visible busy feedback. The workflow announces progress and asynchronous state to assistive technology, moves focus to the new screen heading, supports keyboard use and a skip link, and respects reduced-motion preferences. The report separates authoritative evidence, the capability change, deadline status, proven CodeMatches, and Analysis Limitations.
+
 ## Current scan boundary
 
 The MVP scans one repository with one root `package.json`. It analyzes JavaScript and TypeScript files (`.js`, `.jsx`, `.ts`, and `.tsx`) using local AST analysis and literal endpoint matching.
 
-The scanner currently supports the narrow, transparent Slack path above. It does not claim to understand every JavaScript construct, runtime reachability, generated code, workspaces, multiple languages, or dynamic API usage. It prefers an incomplete result over an unsupported Impact.
+The scanner supports only the narrow, transparent paths defined for the three curated capabilities. It does not claim to understand every JavaScript construct, runtime reachability, generated code, workspaces, multiple languages, or dynamic API usage. It prefers an incomplete result over an unsupported Impact.
 
 Repository contents remain local during scanning. The collection and scan artifacts are explicit JSON files so each boundary can be inspected and tested independently.
 
@@ -98,7 +134,7 @@ Repository contents remain local during scanning. The collection and scan artifa
 - `src/domain/` defines and validates the versioned notice, scan, CodeMatch, and Impact artifacts.
 - `src/report/` renders the local HTML Impact Report.
 - `src/cli.ts` exposes the `collect`, `scan`, and `report` commands.
-- `fixtures/` contains the Slack notice and small repositories used by the acceptance tests.
+- `fixtures/` contains the vendor notices and small repositories used by the acceptance tests.
 - `test/` verifies behavior through the compiled CLI and filesystem artifacts.
 - `docs/product-contract.md` records the product rules and MVP boundary.
 - `docs/adr/0001-separate-public-collection-from-local-analysis.md` records the privacy boundary.
@@ -116,4 +152,6 @@ npm run typecheck
 npm run lint
 ```
 
-The acceptance tests cover the full local workflow, including notice validation, capability-change assertion gates, deadline handling, a proven Slack match, report generation, failed collection gates, Slack-shaped decoys, scope or reassignment cases, dynamic endpoint access, cross-file aliases, and limitation-only scans that must not be promoted to Impact.
+The acceptance tests cover notice validation, assertion gates, deadline handling, proven Slack/OpenAI/Cloudflare matches, aliases and assignment chains, decoys, dynamic access, cross-file aliases, limitation-only scans, report generation, the stored-result proof invariant, and the accessible three-action workflow.
+
+For the product rules and current scope, read [CONTEXT.md](CONTEXT.md) and [docs/product-contract.md](docs/product-contract.md).
