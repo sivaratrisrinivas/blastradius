@@ -13,8 +13,8 @@ That rule is the most important part of the product. A name that looks like a ve
 The current command-line prototype demonstrates Slack's `files.upload` shutdown:
 
 1. `collect` validates a committed, first-party Slack notice fixture and writes a versioned `VendorNotice` artifact.
-2. `scan` reads that notice and scans one local JavaScript or TypeScript repository for proven uses of `slack.files.upload`.
-3. `report` creates a local HTML Impact Report, but only when the scan contains at least one proven `CodeMatch`.
+2. `scan` reads that notice and scans one local JavaScript or TypeScript repository for proven uses of `slack.files.upload`. It prints proven `CodeMatch` records and unresolved uses in separate sections.
+3. `report` creates a local HTML Impact Report, but only when the scan contains at least one proven `CodeMatch`. When limitations exist, the report shows them in their own section.
 
 The repository scan stays on the local machine. The current demonstration uses stored fixture data for the vendor notice; it does not send repository source, paths, snippets, or scan artifacts to an external service.
 
@@ -56,13 +56,17 @@ node dist/src/cli.js report \
   --output /tmp/blast-radius-demo/impact-report.html
 ```
 
-Open `/tmp/blast-radius-demo/impact-report.html` in a browser. The report shows the source notice, its deadline, the proven code location, and any analysis limitations.
+Open `/tmp/blast-radius-demo/impact-report.html` in a browser. The report shows the source notice, its deadline, the proven code location, and any analysis limitations in separate sections.
+
+If the scanner finds usage that it cannot prove, the scan still succeeds. Its output includes an `Analysis Limitations` section with the repository-relative file, one-based line number, and a plain-English reason. Those locations are not counted as proven matches. A repository with only unresolved usage therefore has no Impact, but the limitation is still visible in the scan output and stored JSON artifact.
 
 ## How evidence works
 
 A `CodeMatch` contains the vendor, capability identifier, repository-relative file, line, evidence strength, context, and source line that supports the match.
 
 Blast Radius creates an `Impact` only when the scan has one or more vendor-provenanced `CodeMatch` records. If it cannot prove a use, it records an analysis limitation instead. A repository with no proven match is reported as having no Impact, and the report command refuses to create a confirmed Impact Report.
+
+An `Analysis Limitation` is different from a `CodeMatch`: it identifies code that resembles the affected usage but that the local analyzer cannot prove. Computed or dynamic endpoint access, such as `slack[endpoint]` or `slack.files[method]`, is disclosed this way. A direct-looking call reached through an unsupported cross-file alias is also left unresolved. Neither case can create an Impact.
 
 For the Slack example, the scanner recognizes a direct call shaped like:
 
@@ -108,4 +112,4 @@ npm run typecheck
 npm run lint
 ```
 
-The acceptance tests cover the full local workflow, including notice validation, a proven Slack match, report generation, failed collection gates, Slack-shaped decoys, and scope or reassignment cases that must not be promoted to Impact.
+The acceptance tests cover the full local workflow, including notice validation, a proven Slack match, report generation, failed collection gates, Slack-shaped decoys, scope or reassignment cases, dynamic endpoint access, cross-file aliases, and limitation-only scans that must not be promoted to Impact.
