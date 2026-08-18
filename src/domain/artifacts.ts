@@ -85,6 +85,51 @@ export interface CollectorHealthArtifact {
   sourceUrl?: string;
 }
 
+export type CollectorRepairStage = "proposed" | "validation-failed" | "approval-requested" | "activated" | "rerun-failed" | "recovered";
+export type CollectorRepairValidationStatus = "not-run" | "passed" | "failed";
+export type CollectorRepairApprovalStatus = "not-requested" | "requested" | "approved";
+export type CollectorRepairActivationStatus = "not-activated" | "activated";
+export type CollectorRepairRerunStatus = "not-run" | "healthy" | "failed";
+
+export interface CollectorRepairArtifact {
+  schemaVersion: typeof ARTIFACT_SCHEMA_VERSION;
+  kind: "collector-repair";
+  stage: CollectorRepairStage;
+  detected: {
+    signal: CollectorHealthSignal;
+    collectorHealth: CollectorHealth;
+    vendor?: Vendor;
+    sourceUrl?: string;
+  };
+  activeCollector: CollectorIdentity;
+  proposedCollector: CollectorIdentity;
+  diagnosis: string;
+  validation: {
+    status: CollectorRepairValidationStatus;
+    checks: {
+      collectionContract: CollectorHealthCheckState;
+      zeroResults: CollectorHealthCheckState;
+      requiredFields: CollectorHealthCheckState;
+      schema: CollectorHealthCheckState;
+    };
+    message: string;
+  };
+  approval: {
+    status: CollectorRepairApprovalStatus;
+    message: string;
+  };
+  activation: {
+    status: CollectorRepairActivationStatus;
+    previousCollector?: CollectorIdentity;
+    message: string;
+  };
+  rerun: {
+    status: CollectorRepairRerunStatus;
+    collectorHealth?: CollectorHealth;
+    message: string;
+  };
+}
+
 export type EvidenceStrength = "direct" | "alias-traced";
 export type MatchContext = "source" | "test" | "example";
 export type DeadlineStatus = "upcoming" | "past" | "date-not-stated";
@@ -157,7 +202,32 @@ const ALLOWED_EVIDENCE_STRENGTHS: ReadonlySet<string> = new Set(["direct", "alia
 const ALLOWED_CONTEXTS: ReadonlySet<string> = new Set(["source", "test", "example"]);
 const ALLOWED_HEALTH_SIGNALS: ReadonlySet<string> = new Set(["zero-results", "required-field-collapse", "schema-failure"]);
 const ALLOWED_HEALTH_STATES: ReadonlySet<string> = new Set(["passed", "failed", "not-evaluated"]);
+const ALLOWED_REPAIR_STAGES: ReadonlySet<string> = new Set(["proposed", "validation-failed", "approval-requested", "activated", "rerun-failed", "recovered"]);
+const ALLOWED_REPAIR_VALIDATION_STATUSES: ReadonlySet<string> = new Set(["not-run", "passed", "failed"]);
+const ALLOWED_REPAIR_APPROVAL_STATUSES: ReadonlySet<string> = new Set(["not-requested", "requested", "approved"]);
+const ALLOWED_REPAIR_ACTIVATION_STATUSES: ReadonlySet<string> = new Set(["not-activated", "activated"]);
+const ALLOWED_REPAIR_RERUN_STATUSES: ReadonlySet<string> = new Set(["not-run", "healthy", "failed"]);
 export const HEALTHY_COLLECTOR_HEALTH_MESSAGE = "CollectorHealth: passed zero-results, required-field-collapse, and schema-failure checks only; this does not establish semantic correctness or completeness.";
+
+function isCollectorRepairStage(value: string): value is CollectorRepairStage {
+  return ALLOWED_REPAIR_STAGES.has(value);
+}
+
+function isCollectorRepairValidationStatus(value: string): value is CollectorRepairValidationStatus {
+  return ALLOWED_REPAIR_VALIDATION_STATUSES.has(value);
+}
+
+function isCollectorRepairApprovalStatus(value: string): value is CollectorRepairApprovalStatus {
+  return ALLOWED_REPAIR_APPROVAL_STATUSES.has(value);
+}
+
+function isCollectorRepairActivationStatus(value: string): value is CollectorRepairActivationStatus {
+  return ALLOWED_REPAIR_ACTIVATION_STATUSES.has(value);
+}
+
+function isCollectorRepairRerunStatus(value: string): value is CollectorRepairRerunStatus {
+  return ALLOWED_REPAIR_RERUN_STATUSES.has(value);
+}
 
 export function isChangeType(value: string): value is ChangeType {
   return ALLOWED_CHANGE_TYPES.has(value);
@@ -422,6 +492,152 @@ export function assertCollectorHealthArtifact(value: JsonValue): CollectorHealth
     vendor = capability.vendor;
   }
   return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "collector-health", collectorHealth, ...(vendor ? { vendor } : {}), ...(sourceUrl ? { sourceUrl } : {}) };
+}
+
+function sameCollector(left: CollectorIdentity, right: CollectorIdentity): boolean {
+  return left.identity === right.identity && left.version === right.version;
+}
+
+function parseRepairChecks(value: JsonValue): CollectorRepairArtifact["validation"]["checks"] {
+  if (!isRecord(value)) throw new Error("collector-repair validation checks must be an object");
+  const collectionContract = asString(value.collectionContract, "collector-repair.validation.checks.collectionContract");
+  const zeroResults = asString(value.zeroResults, "collector-repair.validation.checks.zeroResults");
+  const requiredFields = asString(value.requiredFields, "collector-repair.validation.checks.requiredFields");
+  const schema = asString(value.schema, "collector-repair.validation.checks.schema");
+  if (!isCollectorHealthCheckState(collectionContract) || !isCollectorHealthCheckState(zeroResults) || !isCollectorHealthCheckState(requiredFields) || !isCollectorHealthCheckState(schema)) {
+    throw new Error("collector-repair validation checks contain an unsupported state");
+  }
+  return { collectionContract, zeroResults, requiredFields, schema };
+}
+
+export function assertCollectorRepairArtifact(value: JsonValue | CollectorRepairArtifact): CollectorRepairArtifact {
+  if (value === null || Array.isArray(value) || Object.prototype.toString.call(value) !== "[object Object]") {
+    throw new Error("collector-repair artifact has an unsupported schema");
+  }
+  // SAFETY: the runtime object check above establishes the record boundary before field validation.
+  const record = value as JsonObject;
+  if (record.schemaVersion !== ARTIFACT_SCHEMA_VERSION || record.kind !== "collector-repair") {
+    throw new Error("collector-repair artifact has an unsupported schema");
+  }
+  const stageValue = asString(record.stage, "collector-repair.stage");
+  if (!isCollectorRepairStage(stageValue)) throw new Error("collector-repair.stage is not allowed");
+  if (!isRecord(record.detected)) throw new Error("collector-repair.detected must be an object");
+  const activeCollector = parseCollectorIdentity(record.activeCollector);
+  const proposedCollector = parseCollectorIdentity(record.proposedCollector);
+  const previousCollector = isRecord(record.activation) && record.activation.previousCollector !== undefined
+    ? parseCollectorIdentity(record.activation.previousCollector)
+    : undefined;
+  if (sameCollector(activeCollector, proposedCollector) && !previousCollector) throw new Error("collector-repair proposed collector must differ from the active collector");
+  const detectedHealth = parseCollectorHealth(record.detected.collectorHealth, previousCollector ?? activeCollector);
+  if (detectedHealth.status !== "drifted" || detectedHealth.signal === null) throw new Error("collector-repair.detected must describe a supported CollectorHealth failure");
+  const detectedSignal = asString(record.detected.signal, "collector-repair.detected.signal");
+  if (!isCollectorHealthSignal(detectedSignal) || detectedSignal !== detectedHealth.signal) throw new Error("collector-repair.detected.signal must match the detected CollectorHealth signal");
+  const diagnosis = asString(record.diagnosis, "collector-repair.diagnosis");
+
+  let detectedVendor: Vendor | undefined;
+  let detectedSourceUrl: string | undefined;
+  if (record.detected.vendor !== undefined || record.detected.sourceUrl !== undefined) {
+    const detectedVendorValue = asString(record.detected.vendor ?? null, "collector-repair.detected.vendor");
+    if (detectedVendorValue !== "Slack" && detectedVendorValue !== "OpenAI" && detectedVendorValue !== "Cloudflare") {
+      throw new Error("collector-repair detected vendor is not supported");
+    }
+    detectedVendor = detectedVendorValue;
+    detectedSourceUrl = asString(record.detected.sourceUrl ?? null, "collector-repair.detected.sourceUrl");
+    const capability = capabilityForSourceUrl(detectedSourceUrl);
+    if (!capability || capability.vendor !== detectedVendor) throw new Error("collector-repair detected source is not a curated first-party source");
+  }
+
+  if (!isRecord(record.validation)) throw new Error("collector-repair.validation must be an object");
+  const validationStatus = asString(record.validation.status, "collector-repair.validation.status");
+  if (!isCollectorRepairValidationStatus(validationStatus)) throw new Error("collector-repair.validation.status is not allowed");
+  const validationChecks = parseRepairChecks(record.validation.checks);
+  const validationMessage = asString(record.validation.message, "collector-repair.validation.message");
+
+  if (!isRecord(record.approval)) throw new Error("collector-repair.approval must be an object");
+  const approvalStatus = asString(record.approval.status, "collector-repair.approval.status");
+  if (!isCollectorRepairApprovalStatus(approvalStatus)) throw new Error("collector-repair.approval.status is not allowed");
+  const approvalMessage = asString(record.approval.message, "collector-repair.approval.message");
+
+  if (!isRecord(record.activation)) throw new Error("collector-repair.activation must be an object");
+  const activationStatus = asString(record.activation.status, "collector-repair.activation.status");
+  if (!isCollectorRepairActivationStatus(activationStatus)) throw new Error("collector-repair.activation.status is not allowed");
+  const activationMessage = asString(record.activation.message, "collector-repair.activation.message");
+
+  if (!isRecord(record.rerun)) throw new Error("collector-repair.rerun must be an object");
+  const rerunStatus = asString(record.rerun.status, "collector-repair.rerun.status");
+  if (!isCollectorRepairRerunStatus(rerunStatus)) throw new Error("collector-repair.rerun.status is not allowed");
+  const rerunHealth = record.rerun.collectorHealth === undefined ? undefined : parseCollectorHealth(record.rerun.collectorHealth, activeCollector);
+  const rerunMessage = asString(record.rerun.message, "collector-repair.rerun.message");
+
+  const checksPassed = Object.values(validationChecks).every(check => check === "passed");
+  if (validationStatus === "passed" && !checksPassed) throw new Error("passed collector-repair validation must pass the collection contract and supported health checks");
+  if (validationStatus !== "passed" && checksPassed) throw new Error("collector-repair validation checks cannot all pass without passed validation");
+  if ((approvalStatus === "requested" || approvalStatus === "approved") && validationStatus !== "passed") {
+    throw new Error("collector-repair approval requires passed validation");
+  }
+  if (approvalStatus === "approved" && activationStatus !== "activated") throw new Error("approved collector-repair must be activated");
+  if (activationStatus === "activated") {
+    if (approvalStatus !== "approved" || !previousCollector || !sameCollector(previousCollector, detectedHealth.collector) || !sameCollector(activeCollector, proposedCollector)) {
+      throw new Error("activated collector-repair must retain the previous collector and activate the proposed collector");
+    }
+  } else if (!sameCollector(activeCollector, detectedHealth.collector)) {
+    throw new Error("collector-repair must retain the detected collector until activation");
+  }
+  if (rerunStatus === "healthy" && (activationStatus !== "activated" || !rerunHealth || rerunHealth.status !== "healthy" || !sameCollector(rerunHealth.collector, activeCollector))) {
+    throw new Error("healthy collector-repair rerun requires an activated collector and healthy matching health record");
+  }
+  if (stageValue === "proposed" && (validationStatus !== "not-run" || approvalStatus !== "not-requested" || activationStatus !== "not-activated" || rerunStatus !== "not-run")) {
+    throw new Error("proposed collector-repair has advanced state");
+  }
+  if (stageValue === "validation-failed" && (validationStatus !== "failed" || approvalStatus !== "not-requested" || activationStatus !== "not-activated" || rerunStatus !== "not-run")) {
+    throw new Error("failed collector-repair validation has invalid state");
+  }
+  if (stageValue === "approval-requested" && (validationStatus !== "passed" || approvalStatus !== "requested" || activationStatus !== "not-activated" || rerunStatus !== "not-run")) {
+    throw new Error("collector-repair approval request has invalid state");
+  }
+  if (stageValue === "activated" && (activationStatus !== "activated" || rerunStatus !== "not-run")) {
+    throw new Error("activated collector-repair has invalid state");
+  }
+  if (stageValue === "rerun-failed" && (activationStatus !== "activated" || rerunStatus !== "failed")) {
+    throw new Error("failed collector-repair rerun has invalid state");
+  }
+  if (stageValue === "recovered" && (activationStatus !== "activated" || rerunStatus !== "healthy")) {
+    throw new Error("recovered collector-repair has invalid state");
+  }
+
+  const detected: CollectorRepairArtifact["detected"] = {
+    signal: detectedSignal,
+    collectorHealth: detectedHealth
+  };
+  if (detectedVendor !== undefined) detected.vendor = detectedVendor;
+  if (detectedSourceUrl !== undefined) detected.sourceUrl = detectedSourceUrl;
+  const activation: CollectorRepairArtifact["activation"] = {
+    status: activationStatus,
+    message: activationMessage
+  };
+  if (previousCollector !== undefined) activation.previousCollector = previousCollector;
+  const rerun: CollectorRepairArtifact["rerun"] = {
+    status: rerunStatus,
+    message: rerunMessage
+  };
+  if (rerunHealth !== undefined) rerun.collectorHealth = rerunHealth;
+  return {
+    schemaVersion: ARTIFACT_SCHEMA_VERSION,
+    kind: "collector-repair",
+    stage: stageValue,
+    detected,
+    activeCollector,
+    proposedCollector,
+    diagnosis,
+    validation: {
+      status: validationStatus,
+      checks: validationChecks,
+      message: validationMessage
+    },
+    approval: { status: approvalStatus, message: approvalMessage },
+    activation,
+    rerun
+  };
 }
 
 export function assertScanArtifact(value: JsonValue): ScanArtifact {

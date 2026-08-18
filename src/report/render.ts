@@ -24,6 +24,12 @@ function displayCapability(identifier: string): string {
   }
 }
 
+function nextCollectorVersion(version: string): string {
+  const numberedVersion = /^(.*-)?v(\d+)$/.exec(version);
+  if (numberedVersion) return `${numberedVersion[1] ?? ""}v${Number(numberedVersion[2]) + 1}`;
+  return `${version}-repair`;
+}
+
 export function deadlineStatus(deadlineIso: string | null, now: Date): DeadlineStatus {
   if (deadlineIso === null) return "date-not-stated";
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -114,7 +120,7 @@ function workflowScript(): string {
         });
         updateProgress(Math.min(index, 2));
         if (workflow) workflow.setAttribute("aria-busy", "false");
-        if (status) status.textContent = \`\${stepCopy[Math.min(index, 2)]} ready.\`;
+        if (status) status.textContent = index > 2 ? "Optional collector recovery ready." : \`\${stepCopy[Math.min(index, 2)]} ready.\`;
         nextScreen.querySelector("h1")?.focus();
         button?.removeAttribute("aria-busy");
       };
@@ -159,6 +165,9 @@ export function renderImpactReport(value: JsonValue, now = new Date()): string {
   const status = deadlineStatus(scan.capabilityChange.deadlineIso, now);
   const notice = impact.capabilityChange;
   const capability = displayCapability(notice.canonicalIdentifier);
+  const activeCollector = scan.collectorHealth?.collector ?? { identity: "stored-collector", version: "not-recorded" };
+  const proposedCollectorVersion = nextCollectorVersion(activeCollector.version);
+  const limitedHealthMessage = "CollectorHealth covers only these three checks: zero-results, required-field-collapse, and schema-failure; passing them does not establish semantic correctness or completeness.";
   const reportTitle = `${notice.vendor} ${capability} Impact`;
   const normalizedDate = notice.deadlineIso === null
     ? `<span>Not stated</span>`
@@ -349,7 +358,41 @@ export function renderImpactReport(value: JsonValue, now = new Date()): string {
           <h2 id="report-privacy-heading">Repository analysis stayed local</h2>
           <p>Source, paths, snippets, and scan artifacts were not sent externally. Only public vendor material crossed the collection boundary.</p>
         </section>
+        <section class="evidence" data-section="collector-recovery" aria-labelledby="collector-recovery-heading">
+          <div class="section-heading"><span class="section-kicker">Optional second act</span><h2 id="collector-recovery-heading">Collector recovery</h2></div>
+          <p class="muted">The Impact Report is complete. This optional trust-layer demonstration shows how Blast Radius detects a limited CollectorHealth failure, validates a proposed repair, requests approval, and observes a healthy rerun.</p>
+          <button type="button" data-primary-action data-next="drift" data-busy-label="Showing detected collector drift…" aria-controls="workflow"><span class="button-label">See how collector recovery works</span><span class="button-spinner" aria-hidden="true" hidden></span></button>
+        </section>
         <p class="fine-print">The report is proof-first: Blast Radius may miss usage it cannot prove, but it never presents unproved usage as an Impact.</p>
+      </section>
+      <section class="screen" data-screen="drift" aria-labelledby="drift-heading" hidden>
+        <h1 id="drift-heading" tabindex="-1">The collector lost a required field</h1>
+        <p class="lead">Blast Radius stopped the affected output instead of publishing incomplete evidence. This optional second act does not change the core Impact Report.</p>
+        <section class="evidence limitation-panel" data-section="collector-health-detected" aria-labelledby="collector-health-detected-heading">
+          <div class="section-heading"><span class="section-kicker">CollectorHealth detected</span><h2 id="collector-health-detected-heading">Required-field collapse</h2></div>
+          <p><code>capability_identifier</code> was empty. The active collector remains <code>${escapeHtml(activeCollector.identity)}@${escapeHtml(activeCollector.version)}</code>.</p>
+          <p class="fine-print">${escapeHtml(limitedHealthMessage)}</p>
+        </section>
+        <button type="button" data-primary-action data-next="approval" data-busy-label="Validating proposed repair…" aria-controls="workflow"><span class="button-label">Diagnose and validate a repair</span><span class="button-spinner" aria-hidden="true" hidden></span></button>
+      </section>
+      <section class="screen" data-screen="approval" aria-labelledby="approval-heading" hidden>
+        <h1 id="approval-heading" tabindex="-1">The proposed repair passed validation</h1>
+        <p class="lead">The proposed collector passed the collection contract and all three supported health checks, but validation does not activate it.</p>
+        <section class="evidence" data-section="collector-repair-validation" aria-labelledby="collector-repair-validation-heading">
+          <div class="section-heading"><span class="section-kicker">Approval required</span><h2 id="collector-repair-validation-heading">Validation passed</h2></div>
+          <p class="quote"><code>${escapeHtml(activeCollector.version)} → ${escapeHtml(proposedCollectorVersion)}</code></p>
+          <p>The active collector remains <code>${escapeHtml(activeCollector.identity)}@${escapeHtml(activeCollector.version)}</code> until explicit human approval.</p>
+          <p class="fine-print">${escapeHtml(limitedHealthMessage)}</p>
+        </section>
+        <button type="button" data-primary-action data-next="recovered" data-busy-label="Activating approved repair…" aria-controls="workflow"><span class="button-label">Approve and activate ${escapeHtml(proposedCollectorVersion)}</span><span class="button-spinner" aria-hidden="true" hidden></span></button>
+      </section>
+      <section class="screen" data-screen="recovered" aria-labelledby="recovered-heading" hidden>
+        <h1 id="recovered-heading" tabindex="-1">The collector recovered</h1>
+        <p class="lead"><code>${escapeHtml(proposedCollectorVersion)}</code> is active only because validation passed and a human approved it.</p>
+        <section class="evidence" data-section="collector-recovery-result" aria-labelledby="collector-recovery-result-heading">
+          <div class="section-heading"><span class="section-kicker">Collector health</span><h2 id="collector-recovery-result-heading">Healthy rerun completed</h2></div>
+          <p>${escapeHtml(limitedHealthMessage)}</p>
+        </section>
       </section>
     </div>
   </main>

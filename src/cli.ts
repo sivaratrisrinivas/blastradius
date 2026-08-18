@@ -3,8 +3,9 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { collectBrightDataVendorNotice, brightDataConfigFromEnvironment, loadEnvironmentFile } from "./collection/bright-data.js";
 import { collectVendorNotice } from "./collection/collect.js";
+import { approveCollectorRepair, proposeCollectorRepair, rerunCollectorRepair, validateCollectorRepair } from "./collection/repair.js";
 import { curatedSourceUrlForVendor, type Vendor } from "./domain/capabilities.js";
-import { assertCollectorHealthArtifact, assertVendorNoticeArtifact, HEALTHY_COLLECTOR_HEALTH_MESSAGE, isRecord, parseJson, type CollectorHealthArtifact, type JsonValue, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
+import { assertCollectorHealthArtifact, assertCollectorRepairArtifact, assertVendorNoticeArtifact, HEALTHY_COLLECTOR_HEALTH_MESSAGE, isRecord, parseJson, type CollectorHealthArtifact, type CollectorRepairArtifact, type JsonValue, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
 import { CollectorHealthError } from "./domain/collector-health.js";
 import { renderImpactReport } from "./report/render.js";
 import { scanLocalRepository } from "./scan/scan.js";
@@ -30,7 +31,7 @@ function vendorOption(value: string): Vendor {
   throw new Error(`unsupported vendor ${value}; expected Slack, OpenAI, or Cloudflare`);
 }
 
-function writeJson(path: string, value: CollectorHealthArtifact | VendorNoticeArtifact | ScanArtifact): void {
+function writeJson(path: string, value: CollectorHealthArtifact | CollectorRepairArtifact | VendorNoticeArtifact | ScanArtifact): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
@@ -58,6 +59,14 @@ function readVendorNotice(path: string): VendorNoticeArtifact {
     throw new Error(`cannot scan drifted collector output (${diagnostic.collectorHealth.signal}); affected output was withheld`);
   }
   return assertVendorNoticeArtifact(value);
+}
+
+function readCollectorRepair(path: string): CollectorRepairArtifact {
+  return assertCollectorRepairArtifact(readJson(path));
+}
+
+function collectorLabel(collector: { identity: string; version: string }): string {
+  return `${collector.identity}@${collector.version}`;
 }
 
 async function run(args: string[]): Promise<void> {
@@ -131,7 +140,63 @@ async function run(args: string[]): Promise<void> {
     process.stdout.write(`Generated local Impact Report at ${outputPath}. Confirmed Impact: ${report.includes("Confirmed Impact") ? "yes" : "no"}. Privacy: repository analysis stayed local.\n`);
     return;
   }
-  throw new Error(`unknown command ${command ?? ""}; expected collect, scan, or report`);
+  if (command === "repair") {
+    const action = args[1] && !args[1].startsWith("--")
+      ? args[1]
+      : args.includes("--approve") ? "approve" : args.includes("--validate") ? "validate" : args.includes("--rerun") ? "rerun" : "diagnose";
+    const outputPath = option(args, "--output");
+    if (action === "diagnose") {
+      const proposal = proposeCollectorRepair(readJson(option(args, "--diagnostic")), optionalOption(args, "--proposed-version"));
+      writeJson(outputPath, proposal);
+      process.stdout.write([
+        `CollectorHealth ${proposal.detected.collectorHealth.signal} diagnosed for ${collectorLabel(proposal.activeCollector)}.`,
+        `Proposed collector: ${collectorLabel(proposal.proposedCollector)}.`,
+        `Diagnosis: ${proposal.diagnosis}`,
+        proposal.activation.message,
+        "Validation has not run; approval cannot be requested yet."
+      ].join("\n") + "\n");
+      return;
+    }
+    if (action === "validate") {
+      const validation = validateCollectorRepair(readJson(option(args, "--proposal")), option(args, "--fixture"));
+      writeJson(outputPath, validation);
+      if (validation.validation.status !== "passed") throw new Error(`collector repair validation failed: ${validation.validation.message}`);
+      process.stdout.write([
+        validation.validation.message,
+        validation.approval.message,
+        `Active collector remains ${collectorLabel(validation.activeCollector)}.`
+      ].join("\n") + "\n");
+      return;
+    }
+    if (action === "approve") {
+      const proposal = readCollectorRepair(option(args, "--proposal"));
+      try {
+        const activation = approveCollectorRepair(proposal);
+        writeJson(outputPath, activation);
+        process.stdout.write([
+          activation.approval.message,
+          activation.activation.message,
+          "Run a healthy rerun to observe recovery."
+        ].join("\n") + "\n");
+      } catch (error) {
+        writeJson(outputPath, proposal);
+        throw error;
+      }
+      return;
+    }
+    if (action === "rerun") {
+      const recovered = rerunCollectorRepair(readJson(option(args, "--proposal")), option(args, "--fixture"));
+      writeJson(outputPath, recovered);
+      if (recovered.rerun.status !== "healthy") throw new Error(`collector repair healthy rerun failed: ${recovered.rerun.message}`);
+      process.stdout.write([
+        recovered.rerun.message,
+        `Active collector: ${collectorLabel(recovered.activeCollector)}.`
+      ].join("\n") + "\n");
+      return;
+    }
+    throw new Error(`unknown repair action ${action}; expected diagnose, validate, approve, or rerun`);
+  }
+  throw new Error(`unknown command ${command ?? ""}; expected collect, scan, report, or repair`);
 }
 
 try {

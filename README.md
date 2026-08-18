@@ -127,6 +127,29 @@ The adapter sends Bright Data only the selected curated public vendor URL. It va
 
 Collection also records a deliberately limited `CollectorHealth` result. It detects only three forms of collector drift: zero results, required-field collapse, and schema failure. If one is detected, the command writes a `collector-health` diagnostic with the collector identity and version, exits non-zero, and withholds the affected output from scanning and reporting. A healthy record says only that those three checks passed; it does not claim that the scraper is semantically correct or that extraction is complete.
 
+### Optional collector recovery
+
+After the core Impact Report, the optional recovery workflow can diagnose a stored health failure and propose a new collector version. It validates that proposal against the same collection contract and the three supported health checks, but keeps the old collector active until explicit approval:
+
+```bash
+node dist/src/cli.js repair diagnose \
+  --diagnostic /tmp/blast-radius-demo/collector-health.json \
+  --output /tmp/blast-radius-demo/repair-proposal.json
+node dist/src/cli.js repair validate \
+  --proposal /tmp/blast-radius-demo/repair-proposal.json \
+  --fixture fixtures/slack-notice.json \
+  --output /tmp/blast-radius-demo/repair-validated.json
+node dist/src/cli.js repair approve \
+  --proposal /tmp/blast-radius-demo/repair-validated.json \
+  --output /tmp/blast-radius-demo/repair-activated.json
+node dist/src/cli.js repair rerun \
+  --proposal /tmp/blast-radius-demo/repair-activated.json \
+  --fixture fixtures/slack-notice.json \
+  --output /tmp/blast-radius-demo/repair-recovered.json
+```
+
+Failed validation is stored as a non-activating repair artifact. An approval attempt without passed validation also fails without changing the active collector. A healthy rerun says only that the three supported checks passed; it does not claim autonomous or guaranteed repair.
+
 If the scanner sees code it cannot prove, the scan still succeeds. It records the relative file path, line number, and a plain-English reason under `Analysis Limitations`. Those locations are not counted as proven matches. A repository with only unresolved usage has no Impact, but the limitation remains visible in the scan output and saved JSON file.
 
 ## How evidence works
@@ -176,8 +199,9 @@ Repository contents remain local during scanning. The collection and scan artifa
 
 - `src/collection/` validates the committed vendor notice fixture.
 - `src/collection/bright-data.ts` contains the opt-in public Bright Data collection adapter.
+- `src/collection/repair.ts` records the diagnose, validate, approve, activate, and healthy-rerun recovery states.
 - `src/scan/` walks the repository and produces proven CodeMatches and limitations.
-- `src/domain/` defines and validates the versioned notice, scan, CodeMatch, and Impact artifacts.
+- `src/domain/` defines and validates the versioned notice, scan, CodeMatch, Impact, CollectorHealth, and collector-repair artifacts.
 - `src/report/` renders the local HTML Impact Report.
 - `src/cli.ts` exposes the `collect`, `scan`, and `report` commands.
 - `fixtures/` contains the vendor notices and small repositories used by the acceptance tests.
@@ -200,6 +224,6 @@ npm run test:browser
 npm test
 ```
 
-The acceptance tests cover notice validation, assertion gates, deadline handling, collector-health drift signals, proven Slack/OpenAI/Cloudflare matches, aliases and assignment chains, decoys, dynamic access, cross-file aliases, limitation-only scans, report generation, the stored-result proof invariant, and the accessible three-action workflow.
+The acceptance tests cover notice validation, assertion gates, deadline handling, collector-health drift signals, validated human-approved collector recovery, proven Slack/OpenAI/Cloudflare matches, aliases and assignment chains, decoys, dynamic access, cross-file aliases, limitation-only scans, report generation, the stored-result proof invariant, and the accessible three-action workflow plus optional recovery second act.
 
 For the product rules and current scope, read [CONTEXT.md](CONTEXT.md) and [docs/product-contract.md](docs/product-contract.md).

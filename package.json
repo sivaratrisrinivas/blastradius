@@ -10,9 +10,9 @@
     "build": "tsc -p tsconfig.json",
     "lint": "oxlint src test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "npm run build && node --test dist/test/issue-2.acceptance.test.js dist/test/issue-3.acceptance.test.js dist/test/issue-4.acceptance.test.js dist/test/issue-5.acceptance.test.js dist/test/issue-5.rules.test.js dist/test/issue-6.acceptance.test.js dist/test/issue-7.acceptance.test.js dist/test/issue-8.acceptance.test.js dist/test/issue-8.browser.test.js dist/test/issue-9.acceptance.test.js dist/test/issue-10.acceptance.test.js",
+    "test": "npm run build && node --test dist/test/issue-2.acceptance.test.js dist/test/issue-3.acceptance.test.js dist/test/issue-4.acceptance.test.js dist/test/issue-5.acceptance.test.js dist/test/issue-5.rules.test.js dist/test/issue-6.acceptance.test.js dist/test/issue-7.acceptance.test.js dist/test/issue-8.acceptance.test.js dist/test/issue-8.browser.test.js dist/test/issue-9.acceptance.test.js dist/test/issue-10.acceptance.test.js dist/test/issue-11.acceptance.test.js dist/test/issue-11.browser.test.js",
     "test:brightdata": "npm run build && node --test dist/test/issue-9.brightdata.test.js",
-    "test:browser": "npm run build && node --test dist/test/issue-8.browser.test.js"
+    "test:browser": "npm run build && node --test dist/test/issue-8.browser.test.js dist/test/issue-11.browser.test.js"
   },
   "dependencies": {
     "typescript": "^5.9.2"
