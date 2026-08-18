@@ -1,0 +1,15 @@
+{
+  "vendor": "Slack",
+  "sourceUrl": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/",
+  "retrievedAt": "2026-08-19T00:00:00Z",
+  "content": "The files.upload method stopped functioning on November 12, 2025.",
+  "excerpt": "",
+  "capabilityIdentifier": "slack.files.upload",
+  "changeType": "shutdown",
+  "deadlineOriginal": "November 12, 2025",
+  "deadlineIso": "2025-11-12",
+  "collector": {
+    "identity": "deterministic-fixture",
+    "version": "fixture-v1"
+  }
+}

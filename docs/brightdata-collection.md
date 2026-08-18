@@ -50,6 +50,8 @@ node dist/src/cli.js report \
   --output /tmp/blast-radius-demo/live-impact-report.html
 ```
 
+The collection boundary records `CollectorHealth` for the three supported signals only: zero results, required-field collapse, and schema failure. If one is observed, the command exits non-zero and stores a `collector-health` diagnostic containing the collector identity and version; the affected output is withheld from scanning and reporting. A healthy result means only those checks passed, not that the collector is semantically correct or complete.
+
 The offline acceptance suite never contacts Bright Data. Run the narrow live contract check only when the API key and published collector ID are configured:
 
 ```bash

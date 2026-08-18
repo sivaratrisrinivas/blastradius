@@ -4,7 +4,8 @@ import { dirname, resolve } from "node:path";
 import { collectBrightDataVendorNotice, brightDataConfigFromEnvironment, loadEnvironmentFile } from "./collection/bright-data.js";
 import { collectVendorNotice } from "./collection/collect.js";
 import { curatedSourceUrlForVendor, type Vendor } from "./domain/capabilities.js";
-import { assertVendorNoticeArtifact, parseJson, type JsonValue, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
+import { assertCollectorHealthArtifact, assertVendorNoticeArtifact, HEALTHY_COLLECTOR_HEALTH_MESSAGE, isRecord, parseJson, type CollectorHealthArtifact, type JsonValue, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
+import { CollectorHealthError } from "./domain/collector-health.js";
 import { renderImpactReport } from "./report/render.js";
 import { scanLocalRepository } from "./scan/scan.js";
 
@@ -29,7 +30,7 @@ function vendorOption(value: string): Vendor {
   throw new Error(`unsupported vendor ${value}; expected Slack, OpenAI, or Cloudflare`);
 }
 
-function writeJson(path: string, value: VendorNoticeArtifact | ScanArtifact): void {
+function writeJson(path: string, value: CollectorHealthArtifact | VendorNoticeArtifact | ScanArtifact): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
@@ -42,34 +43,61 @@ function readJson(path: string): JsonValue {
   }
 }
 
+function collectorHealthSummary(): string {
+  return HEALTHY_COLLECTOR_HEALTH_MESSAGE;
+}
+
+function missingCollectorHealthSummary(): string {
+  return "CollectorHealth: no stored health record was provided; health checks were not asserted.";
+}
+
+function readVendorNotice(path: string): VendorNoticeArtifact {
+  const value = readJson(path);
+  if (isRecord(value) && value.kind === "collector-health") {
+    const diagnostic = assertCollectorHealthArtifact(value);
+    throw new Error(`cannot scan drifted collector output (${diagnostic.collectorHealth.signal}); affected output was withheld`);
+  }
+  return assertVendorNoticeArtifact(value);
+}
+
 async function run(args: string[]): Promise<void> {
   const command = args[0];
   if (command === "collect") {
     loadEnvironmentFile(resolve(process.cwd(), ".env"));
-    const artifact = args.includes("--live")
-      ? await collectBrightDataVendorNotice(
-        (() => {
-          const vendor = vendorOption(option(args, "--vendor"));
-          const sourceUrl = optionalOption(args, "--source-url") ?? curatedSourceUrlForVendor(vendor);
-          if (!sourceUrl) throw new Error(`no curated source is configured for ${vendor}`);
-          return { vendor, sourceUrl };
-        })(),
-        brightDataConfigFromEnvironment()
-      )
-      : collectVendorNotice(option(args, "--fixture"));
-    writeJson(option(args, "--output"), artifact);
-    process.stdout.write([
-      `Verified ${artifact.notice.vendor} VendorNotice from ${artifact.collection?.collector.identity ?? "stored collection"} and stored ${artifact.capabilityChange.canonicalIdentifier}.`,
-      `Source: ${artifact.notice.sourceUrl}`,
-      `Evidence: ${artifact.notice.excerpt}`,
-      `Deadline: ${artifact.capabilityChange.deadlineOriginal} (${artifact.capabilityChange.deadlineIso ?? "not stated"})`
-    ].join("\n") + "\n");
+    const outputPath = option(args, "--output");
+    try {
+      const artifact = args.includes("--live")
+        ? await collectBrightDataVendorNotice(
+          (() => {
+            const vendor = vendorOption(option(args, "--vendor"));
+            const sourceUrl = optionalOption(args, "--source-url") ?? curatedSourceUrlForVendor(vendor);
+            if (!sourceUrl) throw new Error(`no curated source is configured for ${vendor}`);
+            return { vendor, sourceUrl };
+          })(),
+          brightDataConfigFromEnvironment()
+        )
+        : collectVendorNotice(option(args, "--fixture"));
+      writeJson(outputPath, artifact);
+      process.stdout.write([
+        `Verified ${artifact.notice.vendor} VendorNotice from ${artifact.collection?.collector.identity ?? "stored collection"} and stored ${artifact.capabilityChange.canonicalIdentifier}.`,
+        `Source: ${artifact.notice.sourceUrl}`,
+        `Evidence: ${artifact.notice.excerpt}`,
+        `Deadline: ${artifact.capabilityChange.deadlineOriginal} (${artifact.capabilityChange.deadlineIso ?? "not stated"})`,
+        collectorHealthSummary()
+      ].join("\n") + "\n");
+    } catch (error) {
+      if (error instanceof CollectorHealthError) {
+        writeJson(outputPath, error.artifact);
+        process.stderr.write(`CollectorHealth diagnostic stored at ${outputPath}.\n`);
+      }
+      throw error;
+    }
     return;
   }
   if (command === "scan") {
     const repositoryPath = args[1];
     if (!repositoryPath || repositoryPath.startsWith("--")) throw new Error("missing repository path");
-    const notice = assertVendorNoticeArtifact(readJson(option(args, "--collection")));
+    const notice = readVendorNotice(option(args, "--collection"));
     const result = scanLocalRepository(repositoryPath, notice);
     writeJson(option(args, "--output"), result);
     const provenDetails = result.impact === null
@@ -90,6 +118,7 @@ async function run(args: string[]): Promise<void> {
       `Scanned local repository: ${result.codeMatches.length} proven CodeMatch${result.codeMatches.length > 1 ? "es" : ""}; ${result.limitations.length} unresolved usage(s).`,
       provenDetails,
       limitationDetails,
+      result.collectorHealth ? collectorHealthSummary() : missingCollectorHealthSummary(),
       "Privacy: Repository analysis stayed local; source, paths, snippets, and scan artifacts were not sent externally."
     ].join("\n") + "\n");
     return;

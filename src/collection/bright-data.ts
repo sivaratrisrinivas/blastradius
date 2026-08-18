@@ -10,6 +10,7 @@ import {
   type VendorNoticeCollection
 } from "../domain/artifacts.js";
 import { capabilityForSourceUrl, type Vendor } from "../domain/capabilities.js";
+import { collectorHealthError } from "../domain/collector-health.js";
 import { vendorNoticeArtifactFromCollection } from "./collect.js";
 
 const DEFAULT_API_BASE_URL = "https://api.brightdata.com";
@@ -32,6 +33,13 @@ export interface BrightDataConfig {
 }
 
 type Sleep = (milliseconds: number) => Promise<void>;
+
+class BrightDataSchemaError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "BrightDataSchemaError";
+  }
+}
 
 function valueFrom(record: JsonObject, ...names: string[]): JsonValue | undefined {
   for (const name of names) {
@@ -128,13 +136,57 @@ async function requestJson(
   try {
     return parseJson(text);
   } catch {
-    throw new Error(`Bright Data ${operation} response was not valid JSON`);
+    throw new BrightDataSchemaError(`Bright Data ${operation} response was not valid JSON`);
   }
 }
 
 function collectionId(value: JsonValue): string {
-  if (!isRecord(value)) throw new Error("Bright Data trigger response did not include a collection ID");
-  return asString(value.collection_id, "Bright Data collection_id");
+  if (!isRecord(value) || typeof value.collection_id !== "string" || value.collection_id.trim() === "") {
+    throw new Error("Bright Data trigger response did not include a collection ID");
+  }
+  return value.collection_id;
+}
+
+function throwHealth(
+  request: CollectionRequest,
+  config: BrightDataConfig,
+  signal: "zero-results" | "required-field-collapse" | "schema-failure",
+  message: string
+): never {
+  throw collectorHealthError({ identity: config.collectorId, version: config.collectorVersion }, signal, message, request.vendor, request.sourceUrl);
+}
+
+function assertDatasetRecordShape(
+  request: CollectionRequest,
+  config: BrightDataConfig,
+  value: JsonObject
+): void {
+  const requiredFields = [
+    ["content", ["publicContent", "public_content"]],
+    ["excerpt", []],
+    ["capabilityIdentifier", ["capability_identifier"]],
+    ["changeType", ["change_type"]],
+    ["deadlineOriginal", ["deadline_original"]]
+  ] as const;
+  const collapsed: string[] = [];
+  const malformed: string[] = [];
+  for (const [field, aliases] of requiredFields) {
+    const valueForField = valueFrom(value, field, ...aliases);
+    if (valueForField === undefined || valueForField === null || (typeof valueForField === "string" && valueForField.trim() === "")) {
+      collapsed.push(field);
+    } else if (typeof valueForField !== "string") {
+      malformed.push(field);
+    }
+  }
+  for (const [field, aliases] of [["vendor", []], ["sourceUrl", ["source_url"]], ["retrievedAt", ["retrieved_at"]]] as const) {
+    const valueForField = valueFrom(value, field, ...aliases);
+    if (valueForField !== undefined && valueForField !== null && typeof valueForField !== "string") malformed.push(field);
+    if (valueForField !== undefined && (valueForField === null || valueForField === "")) collapsed.push(field);
+  }
+  const deadlineIso = valueFrom(value, "deadlineIso", "deadline_iso");
+  if (deadlineIso !== undefined && deadlineIso !== null && typeof deadlineIso !== "string") malformed.push("deadlineIso");
+  if (collapsed.length > 0) throwHealth(request, config, "required-field-collapse", `Required collector field(s) were missing or empty: ${collapsed.join(", ")}.`);
+  if (malformed.length > 0) throwHealth(request, config, "schema-failure", `Collector field(s) had an unsupported shape: ${malformed.join(", ")}.`);
 }
 
 function collectionFromRecord(
@@ -143,7 +195,8 @@ function collectionFromRecord(
   value: JsonValue,
   retrievedAt: string
 ): VendorNoticeCollection {
-  if (!isRecord(value)) throw new Error("Bright Data dataset record must be an object");
+  if (!isRecord(value)) throwHealth(request, config, "schema-failure", "Bright Data dataset record was not an object.");
+  assertDatasetRecordShape(request, config, value);
   const vendor = optionalField(value, request.vendor, "vendor");
   const sourceUrl = optionalField(value, request.sourceUrl, "sourceUrl", "source_url");
   if (vendor !== request.vendor || sourceUrl !== request.sourceUrl) {
@@ -181,26 +234,46 @@ export async function collectBrightDataVendorNotice(
     throw new Error("Bright Data request must use a curated first-party source");
   }
   const triggerUrl = `${normalizedApiBaseUrl(config.apiBaseUrl)}/dca/trigger?collector=${encodeURIComponent(config.collectorId)}&queue_next=1`;
-  const trigger = await requestJson(fetcher, triggerUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify([{ url: request.sourceUrl }])
-  }, "trigger");
-  const snapshotId = collectionId(trigger);
+  let trigger: JsonValue;
+  try {
+    trigger = await requestJson(fetcher, triggerUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify([{ url: request.sourceUrl }])
+    }, "trigger");
+  } catch (error) {
+    if (error instanceof BrightDataSchemaError) throwHealth(request, config, "schema-failure", "Bright Data trigger response was not valid JSON.");
+    throw error;
+  }
+  let snapshotId: string;
+  try {
+    snapshotId = collectionId(trigger);
+  } catch {
+    throwHealth(request, config, "schema-failure", "Bright Data trigger response did not match the collection contract.");
+  }
   const datasetUrl = `${normalizedApiBaseUrl(config.apiBaseUrl)}/dca/dataset?id=${encodeURIComponent(snapshotId)}`;
   const retrievedAt = () => clock().toISOString();
 
   for (let attempt = 0; attempt < config.maxPollAttempts; attempt += 1) {
-    const dataset = await requestJson(fetcher, datasetUrl, {
-      headers: { Authorization: `Bearer ${config.apiKey}` }
-    }, "dataset");
+    let dataset: JsonValue;
+    try {
+      dataset = await requestJson(fetcher, datasetUrl, {
+        headers: { Authorization: `Bearer ${config.apiKey}` }
+      }, "dataset");
+    } catch (error) {
+      if (error instanceof BrightDataSchemaError) throwHealth(request, config, "schema-failure", "Bright Data dataset response was not valid JSON.");
+      throw error;
+    }
     if (Array.isArray(dataset) && dataset.length > 0) {
       return vendorNoticeArtifactFromCollection(collectionFromRecord(request, config, dataset[0], retrievedAt()));
     }
+    if (!Array.isArray(dataset) && (!isRecord(dataset) || typeof dataset.status !== "string" || dataset.status.trim() === "")) {
+      throwHealth(request, config, "schema-failure", "Bright Data dataset response did not match the collection contract.");
+    }
     if (attempt + 1 < config.maxPollAttempts) await sleep(config.pollIntervalMs);
   }
-  throw new Error("Bright Data dataset did not return a record before the polling limit");
+  throwHealth(request, config, "zero-results", "The collection returned zero results before the polling limit while one VendorNotice was required.");
 }

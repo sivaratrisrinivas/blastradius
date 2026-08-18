@@ -30,6 +30,21 @@ export interface CollectorIdentity extends JsonObject {
   version: string;
 }
 
+export type CollectorHealthSignal = "zero-results" | "required-field-collapse" | "schema-failure";
+export type CollectorHealthCheckState = "passed" | "failed" | "not-evaluated";
+
+export interface CollectorHealth {
+  status: "healthy" | "drifted";
+  signal: CollectorHealthSignal | null;
+  collector: CollectorIdentity;
+  checks: {
+    zeroResults: CollectorHealthCheckState;
+    requiredFields: CollectorHealthCheckState;
+    schema: CollectorHealthCheckState;
+  };
+  message: string;
+}
+
 export interface VendorNoticeCollection extends JsonObject {
   schemaVersion: typeof COLLECTION_SCHEMA_VERSION;
   kind: "vendor-notice-collection";
@@ -57,8 +72,17 @@ export interface VendorNoticeArtifact {
   schemaVersion: typeof ARTIFACT_SCHEMA_VERSION;
   kind: "vendor-notice";
   collection?: VendorNoticeCollection;
+  collectorHealth?: CollectorHealth;
   notice: VendorNotice;
   capabilityChange: CapabilityChange;
+}
+
+export interface CollectorHealthArtifact {
+  schemaVersion: typeof ARTIFACT_SCHEMA_VERSION;
+  kind: "collector-health";
+  collectorHealth: CollectorHealth;
+  vendor?: Vendor;
+  sourceUrl?: string;
 }
 
 export type EvidenceStrength = "direct" | "alias-traced";
@@ -90,6 +114,7 @@ export interface ScanArtifact {
   schemaVersion: typeof ARTIFACT_SCHEMA_VERSION;
   kind: "scan-result";
   collection?: VendorNoticeCollection;
+  collectorHealth?: CollectorHealth;
   notice: VendorNotice;
   capabilityChange: CapabilityChange;
   codeMatches: CodeMatch[];
@@ -130,6 +155,9 @@ function asPositiveInteger(value: JsonValue, field: string): number {
 const ALLOWED_CHANGE_TYPES: ReadonlySet<string> = new Set(["deprecation", "sunset", "shutdown", "removal"]);
 const ALLOWED_EVIDENCE_STRENGTHS: ReadonlySet<string> = new Set(["direct", "alias-traced"]);
 const ALLOWED_CONTEXTS: ReadonlySet<string> = new Set(["source", "test", "example"]);
+const ALLOWED_HEALTH_SIGNALS: ReadonlySet<string> = new Set(["zero-results", "required-field-collapse", "schema-failure"]);
+const ALLOWED_HEALTH_STATES: ReadonlySet<string> = new Set(["passed", "failed", "not-evaluated"]);
+export const HEALTHY_COLLECTOR_HEALTH_MESSAGE = "CollectorHealth: passed zero-results, required-field-collapse, and schema-failure checks only; this does not establish semantic correctness or completeness.";
 
 export function isChangeType(value: string): value is ChangeType {
   return ALLOWED_CHANGE_TYPES.has(value);
@@ -141,6 +169,48 @@ function isEvidenceStrength(value: string): value is EvidenceStrength {
 
 function isMatchContext(value: string): value is MatchContext {
   return ALLOWED_CONTEXTS.has(value);
+}
+
+function isCollectorHealthSignal(value: string): value is CollectorHealthSignal {
+  return ALLOWED_HEALTH_SIGNALS.has(value);
+}
+
+function isCollectorHealthCheckState(value: string): value is CollectorHealthCheckState {
+  return ALLOWED_HEALTH_STATES.has(value);
+}
+
+export function healthyCollectorHealth(collector: CollectorIdentity): CollectorHealth {
+  return {
+    status: "healthy",
+    signal: null,
+    collector,
+    checks: { zeroResults: "passed", requiredFields: "passed", schema: "passed" },
+    message: HEALTHY_COLLECTOR_HEALTH_MESSAGE
+  };
+}
+
+export function driftedCollectorHealth(
+  collector: CollectorIdentity,
+  signal: CollectorHealthSignal,
+  message: string
+): CollectorHealth {
+  const checks: CollectorHealth["checks"] = {
+    zeroResults: "not-evaluated",
+    requiredFields: "not-evaluated",
+    schema: "not-evaluated"
+  };
+  if (signal === "zero-results") checks.zeroResults = "failed";
+  if (signal === "required-field-collapse") checks.requiredFields = "failed";
+  if (signal === "schema-failure") checks.schema = "failed";
+  return { status: "drifted", signal, collector, checks, message };
+}
+
+export function collectorHealthArtifact(
+  collectorHealth: CollectorHealth,
+  vendor?: Vendor,
+  sourceUrl?: string
+): CollectorHealthArtifact {
+  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "collector-health", collectorHealth, ...(vendor ? { vendor } : {}), ...(sourceUrl ? { sourceUrl } : {}) };
 }
 
 export function isExactDate(value: string): boolean {
@@ -167,6 +237,41 @@ function parseCollectorIdentity(value: JsonValue): CollectorIdentity {
   return {
     identity: asString(value.identity, "collection.collector.identity"),
     version: asString(value.version, "collection.collector.version")
+  };
+}
+
+function parseCollectorHealth(value: JsonValue, expectedCollector?: CollectorIdentity): CollectorHealth {
+  if (!isRecord(value)) throw new Error("collectorHealth must be an object");
+  const status = asString(value.status, "collectorHealth.status");
+  if (status !== "healthy" && status !== "drifted") throw new Error("collectorHealth.status is not allowed");
+  const signalValue = value.signal === null ? null : asString(value.signal, "collectorHealth.signal");
+  if (signalValue !== null && !isCollectorHealthSignal(signalValue)) throw new Error("collectorHealth.signal is not allowed");
+  if (!isRecord(value.checks)) throw new Error("collectorHealth.checks must be an object");
+  const zeroResults = asString(value.checks.zeroResults, "collectorHealth.checks.zeroResults");
+  const requiredFields = asString(value.checks.requiredFields, "collectorHealth.checks.requiredFields");
+  const schema = asString(value.checks.schema, "collectorHealth.checks.schema");
+  if (!isCollectorHealthCheckState(zeroResults) || !isCollectorHealthCheckState(requiredFields) || !isCollectorHealthCheckState(schema)) {
+    throw new Error("collectorHealth.checks contains an unsupported state");
+  }
+  const collector = parseCollectorIdentity(value.collector);
+  if (expectedCollector && (collector.identity !== expectedCollector.identity || collector.version !== expectedCollector.version)) {
+    throw new Error("collectorHealth does not match the collection collector");
+  }
+  const message = asString(value.message, "collectorHealth.message");
+  if (status === "healthy" && (signalValue !== null || zeroResults !== "passed" || requiredFields !== "passed" || schema !== "passed" || message !== HEALTHY_COLLECTOR_HEALTH_MESSAGE)) {
+    throw new Error("healthy collectorHealth must pass all supported checks and have no signal");
+  }
+  if (status === "drifted" && signalValue === null) throw new Error("drifted collectorHealth must identify a signal");
+  if (status === "drifted" && signalValue !== null) {
+    const failedCheck = signalValue === "zero-results" ? zeroResults : signalValue === "required-field-collapse" ? requiredFields : schema;
+    if (failedCheck !== "failed") throw new Error("drifted collectorHealth must fail the reported check");
+  }
+  return {
+    status,
+    signal: signalValue,
+    collector,
+    checks: { zeroResults, requiredFields, schema },
+    message
   };
 }
 
@@ -294,7 +399,29 @@ export function assertVendorNoticeArtifact(value: JsonValue): VendorNoticeArtifa
   const capabilityChange = parseCapabilityChange(value.capabilityChange, notice);
   assertCapabilityChangeGates(notice, capabilityChange);
   const collection = value.collection === undefined ? undefined : parseCollection(value.collection, notice, capabilityChange);
-  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "vendor-notice", collection, notice, capabilityChange };
+  const collectorHealth = value.collectorHealth === undefined
+    ? undefined
+    : parseCollectorHealth(value.collectorHealth, collection?.collector);
+  if (collectorHealth?.status === "drifted") throw new Error(`drifted CollectorHealth output cannot be scanned or treated as a VendorNotice (${collectorHealth.signal})`);
+  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "vendor-notice", collection, ...(collectorHealth ? { collectorHealth } : {}), notice, capabilityChange };
+}
+
+export function assertCollectorHealthArtifact(value: JsonValue): CollectorHealthArtifact {
+  if (!isRecord(value) || value.schemaVersion !== ARTIFACT_SCHEMA_VERSION || value.kind !== "collector-health") {
+    throw new Error("collector-health artifact has an unsupported schema");
+  }
+  const collectorHealth = parseCollectorHealth(value.collectorHealth);
+  if (collectorHealth.status !== "drifted") throw new Error("collector-health artifact must describe drift");
+  let vendor: Vendor | undefined;
+  let sourceUrl: string | undefined;
+  if (value.vendor !== undefined || value.sourceUrl !== undefined) {
+    const vendorValue = asString(value.vendor ?? null, "collector-health.vendor");
+    sourceUrl = asString(value.sourceUrl ?? null, "collector-health.sourceUrl");
+    const capability = capabilityForSourceUrl(sourceUrl);
+    if (!capability || capability.vendor !== vendorValue) throw new Error("collector-health source is not a curated first-party source");
+    vendor = capability.vendor;
+  }
+  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "collector-health", collectorHealth, ...(vendor ? { vendor } : {}), ...(sourceUrl ? { sourceUrl } : {}) };
 }
 
 export function assertScanArtifact(value: JsonValue): ScanArtifact {
@@ -308,6 +435,10 @@ export function assertScanArtifact(value: JsonValue): ScanArtifact {
   const capabilityChange = parseCapabilityChange(value.capabilityChange, notice);
   assertCapabilityChangeGates(notice, capabilityChange);
   const collection = value.collection === undefined ? undefined : parseCollection(value.collection, notice, capabilityChange);
+  const collectorHealth = value.collectorHealth === undefined
+    ? undefined
+    : parseCollectorHealth(value.collectorHealth, collection?.collector);
+  if (collectorHealth?.status === "drifted") throw new Error("drifted CollectorHealth output cannot be rendered as a confirmed Impact");
   const codeMatches = value.codeMatches.map(codeMatch => parseCodeMatch(codeMatch, capabilityChange));
   const limitations = value.limitations.map(parseLimitation);
   if (codeMatches.length > 0 && value.impact === null) throw new Error("scan-result with proven CodeMatches must contain an Impact");
@@ -323,5 +454,5 @@ export function assertScanArtifact(value: JsonValue): ScanArtifact {
     if (impactMatches.length === 0) throw new Error("Impact requires at least one proven CodeMatch");
     impact = { capabilityChange: impactChange, codeMatches: impactMatches };
   }
-  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "scan-result", collection, notice, capabilityChange, codeMatches, limitations, impact };
+  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "scan-result", collection, ...(collectorHealth ? { collectorHealth } : {}), notice, capabilityChange, codeMatches, limitations, impact };
 }

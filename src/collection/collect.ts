@@ -8,34 +8,90 @@ import {
   isRecord,
   parseJson,
   type CollectorIdentity,
+  type JsonObject,
   type JsonValue,
   type VendorNoticeArtifact,
-  type VendorNoticeCollection
+  type VendorNoticeCollection,
+  healthyCollectorHealth
 } from "../domain/artifacts.js";
 import { evaluateCapabilityChangeCandidate, type CapabilityChangeCandidate } from "../domain/assertions.js";
 import { capabilityForSourceUrl } from "../domain/capabilities.js";
+import { collectorHealthError } from "../domain/collector-health.js";
+
+const DEFAULT_FIXTURE_COLLECTOR: CollectorIdentity = { identity: "deterministic-fixture", version: "fixture-v1" };
+
+function fixtureMetadata(value: JsonValue): { collector: CollectorIdentity; vendor?: "Slack" | "OpenAI" | "Cloudflare"; sourceUrl?: string } {
+  if (!isRecord(value)) return { collector: DEFAULT_FIXTURE_COLLECTOR };
+  let collector = DEFAULT_FIXTURE_COLLECTOR;
+  if (isRecord(value.collector) && typeof value.collector.identity === "string" && typeof value.collector.version === "string" && value.collector.identity.trim() !== "" && value.collector.version.trim() !== "") {
+    collector = { identity: value.collector.identity, version: value.collector.version };
+  }
+  const vendor = value.vendor === "Slack" || value.vendor === "OpenAI" || value.vendor === "Cloudflare" ? value.vendor : undefined;
+  const sourceUrl = typeof value.sourceUrl === "string" && value.sourceUrl.trim() !== "" ? value.sourceUrl : undefined;
+  return { collector, ...(vendor ? { vendor } : {}), ...(sourceUrl ? { sourceUrl } : {}) };
+}
+
+function fixtureHealthError(value: JsonValue, signal: "zero-results" | "required-field-collapse" | "schema-failure", message: string): never {
+  const metadata = fixtureMetadata(value);
+  throw collectorHealthError(metadata.collector, signal, message, metadata.vendor, metadata.sourceUrl);
+}
+
+function assertFixtureRequiredFields(value: JsonObject): void {
+  const requiredFields = ["vendor", "sourceUrl", "retrievedAt", "content", "excerpt", "deadlineOriginal"] as const;
+  const collapsed = requiredFields.filter(field => {
+    const fieldValue = value[field];
+    return fieldValue === undefined || fieldValue === null || (typeof fieldValue === "string" && fieldValue.trim() === "");
+  });
+  const malformed = requiredFields.filter(field => {
+    const fieldValue = value[field];
+    return fieldValue !== undefined && fieldValue !== null && typeof fieldValue !== "string";
+  });
+  if (collapsed.length > 0) fixtureHealthError(value, "required-field-collapse", `Required collection field(s) were missing or empty: ${collapsed.join(", ")}.`);
+  if (malformed.length > 0) fixtureHealthError(value, "schema-failure", `Required collection field(s) had an unsupported shape: ${malformed.join(", ")}.`);
+  if (value.deadlineIso === undefined || value.deadlineIso === "") fixtureHealthError(value, "required-field-collapse", "Required collection field(s) were missing or empty: deadlineIso.");
+  if (value.deadlineIso !== null && value.deadlineIso !== undefined && typeof value.deadlineIso !== "string") fixtureHealthError(value, "schema-failure", "Required collection field(s) had an unsupported shape: deadlineIso.");
+}
 
 export function collectVendorNotice(fixturePath: string): VendorNoticeArtifact {
-  let fixture: JsonValue;
+  let contents: string;
   try {
-    fixture = parseJson(readFileSync(fixturePath, "utf8"));
+    contents = readFileSync(fixturePath, "utf8");
   } catch (error) {
     throw new Error(`could not read collection fixture: ${error instanceof Error ? error.message : String(error)}`);
   }
-  if (!isRecord(fixture)) throw new Error("collection fixture must be a JSON object");
-
+  let fixture: JsonValue;
+  try {
+    fixture = parseJson(contents);
+  } catch {
+    fixtureHealthError(null, "schema-failure", "Collection fixture was not valid JSON.");
+  }
+  if (Array.isArray(fixture)) {
+    if (fixture.length === 0) fixtureHealthError(fixture, "zero-results", "The collection returned zero results while one VendorNotice was required.");
+    fixtureHealthError(fixture, "schema-failure", "Collection fixture results must use one supported object record.");
+  }
+  if (!isRecord(fixture)) fixtureHealthError(fixture, "schema-failure", "Collection fixture must be a supported object record.");
+  if (fixture.schemaVersion !== undefined) fixtureHealthError(fixture, "schema-failure", "Collection fixture used an unsupported response schema.");
+  if (fixture.records !== undefined) {
+    if (Array.isArray(fixture.records) && fixture.records.length === 0) fixtureHealthError(fixture, "zero-results", "The collection returned zero results while one VendorNotice was required.");
+    fixtureHealthError(fixture, "schema-failure", "Collection fixture used an unsupported response schema.");
+  }
+  if (fixture.results !== undefined) {
+    if (Array.isArray(fixture.results) && fixture.results.length === 0) fixtureHealthError(fixture, "zero-results", "The collection returned zero results while one VendorNotice was required.");
+    fixtureHealthError(fixture, "schema-failure", "Collection fixture used an unsupported response schema.");
+  }
   const vendor = asString(fixture.vendor, "vendor");
   const sourceUrl = asString(fixture.sourceUrl, "sourceUrl");
+  const sourceCapability = capabilityForSourceUrl(sourceUrl);
+  if (!sourceCapability || sourceCapability.vendor !== vendor) {
+    throw new Error(`collection fixture is not an allowed first-party ${vendor} source`);
+  }
+  assertFixtureRequiredFields(fixture);
   const retrievedAt = asString(fixture.retrievedAt, "retrievedAt");
   const excerpt = asString(fixture.excerpt, "excerpt");
   const capabilityIdentifier = asString(fixture.capabilityIdentifier, "capabilityIdentifier");
   const changeType = asString(fixture.changeType, "changeType");
   const deadlineOriginal = asString(fixture.deadlineOriginal, "deadlineOriginal");
   const deadlineIso = fixture.deadlineIso === null ? null : asString(fixture.deadlineIso, "deadlineIso");
-  const sourceCapability = capabilityForSourceUrl(sourceUrl);
-  if (!sourceCapability || sourceCapability.vendor !== vendor) {
-    throw new Error(`collection fixture is not an allowed first-party ${vendor} source`);
-  }
   const collection: VendorNoticeCollection = {
     schemaVersion: COLLECTION_SCHEMA_VERSION,
     kind: "vendor-notice-collection",
@@ -43,7 +99,7 @@ export function collectVendorNotice(fixturePath: string): VendorNoticeArtifact {
     sourceUrl,
     retrievedAt,
     collector: fixture.collector === undefined
-      ? { identity: "deterministic-fixture", version: "fixture-v1" }
+      ? DEFAULT_FIXTURE_COLLECTOR
       : parseFixtureCollector(fixture.collector),
     content: fixture.content === undefined ? excerpt : asString(fixture.content, "content"),
     excerpt,
@@ -56,7 +112,10 @@ export function collectVendorNotice(fixturePath: string): VendorNoticeArtifact {
 }
 
 function parseFixtureCollector(value: JsonValue): CollectorIdentity {
-  if (!isRecord(value)) throw new Error("collector must be an object");
+  if (!isRecord(value)) fixtureHealthError(value, "schema-failure", "Collector metadata must be an object with identity and version.");
+  if (typeof value.identity !== "string" || typeof value.version !== "string" || value.identity.trim() === "" || value.version.trim() === "") {
+    fixtureHealthError(value, "schema-failure", "Collector metadata must contain non-empty identity and version fields.");
+  }
   return {
     identity: asString(value.identity, "collector.identity"),
     version: asString(value.version, "collector.version")
@@ -88,7 +147,7 @@ export function vendorNoticeArtifactFromCollection(collection: VendorNoticeColle
     throw new Error(`collection candidate is not the supported ${collection.vendor} capability`);
   }
 
-  return assertVendorNoticeArtifact({
+  const artifact = assertVendorNoticeArtifact({
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
     kind: "vendor-notice",
     collection,
@@ -101,6 +160,7 @@ export function vendorNoticeArtifactFromCollection(collection: VendorNoticeColle
       deadlineIso: collection.deadlineIso
     }
   });
+  return { ...artifact, collectorHealth: healthyCollectorHealth(collection.collector) };
 }
 
 export function collectSlackNotice(fixturePath: string): VendorNoticeArtifact {

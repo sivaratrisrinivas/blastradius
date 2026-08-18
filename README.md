@@ -123,6 +123,8 @@ node dist/src/cli.js report \
 
 The adapter sends Bright Data only the selected curated public vendor URL. It validates the returned evidence before it can become a `CapabilityChange`. Repository source, local paths, snippets, symbols, `CodeMatch` records, and scan artifacts stay on the local machine. Run `npm run test:brightdata` for the narrow live contract check; it is skipped unless both values are configured. See [docs/brightdata-collection.md](docs/brightdata-collection.md) for the collector output details.
 
+Collection also records a deliberately limited `CollectorHealth` result. It detects only zero results, required-field collapse, and schema failure. A detected signal is written as a `collector-health` diagnostic with the collector identity and version, the command exits non-zero, and the affected output cannot be scanned or rendered as an Impact. A healthy record says only that those three checks passed; it does not claim semantic scraper correctness or complete extraction.
+
 If the scanner sees code it cannot prove, the scan still succeeds. It records the relative file path, line number, and a plain-English reason under `Analysis Limitations`. Those locations are not counted as proven matches. A repository with only unresolved usage has no Impact, but the limitation remains visible in the scan output and saved JSON file.
 
 ## How evidence works

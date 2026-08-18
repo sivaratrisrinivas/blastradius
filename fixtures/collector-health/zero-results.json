@@ -1,0 +1,9 @@
+{
+  "vendor": "Slack",
+  "sourceUrl": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/",
+  "collector": {
+    "identity": "deterministic-fixture",
+    "version": "fixture-v1"
+  },
+  "results": []
+}

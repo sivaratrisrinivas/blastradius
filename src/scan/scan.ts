@@ -644,6 +644,7 @@ export function scanLocalRepository(repositoryPath: string, notice: VendorNotice
     schemaVersion: 1,
     kind: "scan-result",
     collection: notice.collection,
+    collectorHealth: notice.collectorHealth,
     notice: notice.notice,
     capabilityChange: notice.capabilityChange,
     codeMatches,
