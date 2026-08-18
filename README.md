@@ -146,6 +146,10 @@ node dist/src/cli.js repair rerun \
   --proposal /tmp/blast-radius-demo/repair-activated.json \
   --fixture fixtures/collector-health/healthy-repair-v2.json \
   --output /tmp/blast-radius-demo/repair-recovered.json
+node dist/src/cli.js report \
+  --scan /tmp/blast-radius-demo/scan-result.json \
+  --repair /tmp/blast-radius-demo/repair-recovered.json \
+  --output /tmp/blast-radius-demo/impact-report-with-recovery.html
 ```
 
 Failed validation is stored as a non-activating repair artifact. An approval attempt without passed validation also fails without changing the active collector. A healthy rerun says only that the three supported checks passed; it does not claim autonomous or guaranteed repair.
