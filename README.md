@@ -37,6 +37,12 @@ npm install
 npm run build
 ```
 
+For the real-browser workflow check, install the WSL Chromium runtime once:
+
+```bash
+npx playwright install chromium
+```
+
 Collect the verified Slack notice:
 
 ```bash
@@ -150,12 +156,14 @@ The Issue #3 proof walkthrough is available at [docs/show-me-issue-3.html](docs/
 
 ## Development checks
 
-Run the full acceptance suite, typecheck, and lint before committing changes:
+Run the build, typecheck, lint, real-browser check, and full acceptance suite before committing changes:
 
 ```bash
-npm test
+npm run build
 npm run typecheck
 npm run lint
+npm run test:browser
+npm test
 ```
 
 The acceptance tests cover notice validation, assertion gates, deadline handling, proven Slack/OpenAI/Cloudflare matches, aliases and assignment chains, decoys, dynamic access, cross-file aliases, limitation-only scans, report generation, the stored-result proof invariant, and the accessible three-action workflow.
