@@ -1,16 +1,16 @@
 # Blast Radius
 
-Blast Radius connects an official vendor notice to the code locations it can prove use the affected API or route.
+Blast Radius is a local command-line tool that connects an official vendor notice to the code locations it can prove use the affected API or route.
 
-The project is deliberately cautious:
+Its most important rule is:
 
 > Blast Radius may miss something it cannot prove; it must never present something it cannot prove as an Impact.
 
-That rule is the most important part of the product. A name that looks like a vendor API is not enough. The scanner must also prove the vendor and capability behind the call.
+That rule controls every part of the product. A name that looks like a vendor API is not enough. The scanner must also prove which vendor and capability the code is using.
 
-## What the prototype does
+## What it does
 
-The command-line prototype follows the same simple path for three vendor changes:
+The current MVP follows the same three-step path for three curated vendor changes:
 
 | Vendor | Affected capability | Deadline |
 | --- | --- | --- |
@@ -18,13 +18,15 @@ The command-line prototype follows the same simple path for three vendor changes
 | OpenAI | Assistants API | August 26, 2026 |
 | Cloudflare | Legacy Workers KV namespace routes | October 15, 2026 |
 
-1. `collect` checks a saved copy of an official vendor notice and stores the verified result.
-2. `scan` reads that result and checks one local JavaScript or TypeScript repository for uses it can prove. It prints proven `CodeMatch` records separately from code it could not prove.
-3. `report` creates a local HTML Impact Report only when the scan found at least one proven match. Any unresolved code is shown in its own section.
+1. `collect` checks a saved copy of an official vendor notice and stores the parts that passed validation.
+2. `scan` reads that result and checks one local JavaScript or TypeScript repository. It produces proven `CodeMatch` records and records related code it could not prove separately.
+3. `report` creates a local HTML Impact Report only when the scan found at least one proven match. Unresolved code is shown as an analysis limitation, never as an Impact.
 
-Repository scanning stays on the local machine. The examples use saved notice data, so repository source, paths, snippets, and scan files are never sent to an external service.
+Repository scanning stays on the local machine. The offline examples use saved notice data, so repository source, paths, snippets, and scan files are never sent to an external service. The optional live collector sends only the selected public vendor URL to Bright Data; it never sends the local repository.
 
 All three examples use the same offline commands. For Cloudflare, the scanner recognizes the old `/accounts/{account_id}/workers/namespaces/*` route and deliberately does not match the replacement `/storage/kv/namespaces/*` route.
+
+This is intentionally a narrow MVP. It can miss code that it cannot prove, but it does not turn guesses into user-facing Impacts.
 
 ## Quick start
 
@@ -68,9 +70,9 @@ node dist/src/cli.js report \
   --output /tmp/blast-radius-demo/impact-report.html
 ```
 
-Open `/tmp/blast-radius-demo/impact-report.html` in a browser. The report shows the source notice, its deadline, the proven code location, and any analysis limitations in separate sections.
+Open `/tmp/blast-radius-demo/impact-report.html` in a browser. The report shows the source notice, its deadline, proven code locations, and analysis limitations in separate sections.
 
-The OpenAI and Cloudflare examples use the same commands with their fixtures and repositories. Each one can finish with a local HTML report:
+The OpenAI and Cloudflare examples use the same commands with their fixtures and repositories. Each one produces a local HTML report:
 
 ```bash
 node dist/src/cli.js collect \
@@ -121,25 +123,25 @@ node dist/src/cli.js report \
   --output /tmp/blast-radius-demo/live-impact-report.html
 ```
 
-The adapter sends Bright Data only the selected curated public vendor URL. It validates the returned evidence before it can become a `CapabilityChange`. Repository source, local paths, snippets, symbols, `CodeMatch` records, and scan artifacts stay on the local machine. Run `npm run test:brightdata` for the narrow live contract check; it is skipped unless both values are configured. See [docs/brightdata-collection.md](docs/brightdata-collection.md) for the collector output details.
+The adapter sends Bright Data only the selected curated public vendor URL. It validates the returned evidence before it can become a `CapabilityChange`. Repository source, local paths, snippets, symbols, `CodeMatch` records, and scan artifacts stay on the local machine. Run `npm run test:brightdata` for the narrow live contract check; the test is skipped unless both values are configured. See [docs/brightdata-collection.md](docs/brightdata-collection.md) for the collector output details.
 
-Collection also records a deliberately limited `CollectorHealth` result. It detects only zero results, required-field collapse, and schema failure. A detected signal is written as a `collector-health` diagnostic with the collector identity and version, the command exits non-zero, and the affected output cannot be scanned or rendered as an Impact. A healthy record says only that those three checks passed; it does not claim semantic scraper correctness or complete extraction.
+Collection also records a deliberately limited `CollectorHealth` result. It detects only three forms of collector drift: zero results, required-field collapse, and schema failure. If one is detected, the command writes a `collector-health` diagnostic with the collector identity and version, exits non-zero, and withholds the affected output from scanning and reporting. A healthy record says only that those three checks passed; it does not claim that the scraper is semantically correct or that extraction is complete.
 
 If the scanner sees code it cannot prove, the scan still succeeds. It records the relative file path, line number, and a plain-English reason under `Analysis Limitations`. Those locations are not counted as proven matches. A repository with only unresolved usage has no Impact, but the limitation remains visible in the scan output and saved JSON file.
 
 ## How evidence works
 
-A `CodeMatch` contains the vendor, capability identifier, repository-relative file, line, evidence strength, context, and source line that supports the match.
+A `CodeMatch` contains the vendor, capability identifier, repository-relative file, line number, evidence strength, context, and source line that supports the match.
 
-Blast Radius creates an `Impact` only when the scan has one or more proven matches tied to the right vendor and capability. If it cannot prove a use, it records an analysis limitation instead. A repository with no proven match has no Impact, and the report command refuses to create a confirmed report.
+Blast Radius creates an `Impact` only when the scan has one or more proven matches tied to the right vendor and capability. If it cannot prove a use, it records an analysis limitation instead. A repository with no proven match has no Impact, and the `report` command refuses to create a confirmed report.
 
-An `Analysis Limitation` is different from a `CodeMatch`: it identifies code that looks related but that the local analyzer cannot prove. Computed or dynamic access, such as `slack[endpoint]` or `slack.files[method]`, is disclosed this way. A direct-looking call reached through an unsupported cross-file alias is also left unresolved. Neither case can create an Impact.
+An `Analysis Limitation` is different from a `CodeMatch`. It identifies code that looks related but that the local analyzer cannot prove. Computed or dynamic access, such as `slack[endpoint]` or `slack.files[method]`, is disclosed this way. A direct-looking call reached through an unsupported cross-file alias is also left unresolved. Neither case can create an Impact.
 
 Before a notice can produce a `CapabilityChange`, `collect` applies the same proof-first rule to the notice itself. The candidate must come from the curated first-party source, explicitly name the affected capability, clearly connect that capability to a lifecycle event, and use a supported change type such as deprecation, sunset, shutdown, or removal. A candidate that fails one of these checks is withheld from `CapabilityChanges` and `Impacts`; it may still be kept as a diagnostic so the failed check is visible.
 
 Blast Radius keeps the smallest supporting excerpt and the notice's original deadline wording. It normalizes a deadline only when the notice contains one complete, unambiguous date. Partial, relative, ambiguous, and ranged dates are not turned into invented precision. At report time, the supplied report clock labels the deadline as upcoming or past; if no precise date was stated, the report says that the date was not stated. An accepted capability change with no proven `CodeMatch` still produces no `Impact`.
 
-For the Slack example, the scanner recognizes a direct call shaped like:
+For the Slack example, the scanner recognizes a direct call shaped like this:
 
 ```ts
 import { WebClient } from "@slack/web-api";
@@ -148,7 +150,7 @@ const slack = new WebClient(token);
 await slack.files.upload({ channels: channel, file });
 ```
 
-The receiver must resolve to a `WebClient` imported from `@slack/web-api`. Comments, strings, unrelated identifiers, similarly named clients from other packages, method shape alone, shadowed bindings, reassigned bindings, and unsupported dynamic access do not become CodeMatches. Those cases are either ignored or disclosed as limitations.
+The receiver must resolve to a `WebClient` imported from `@slack/web-api`. Comments, strings, unrelated identifiers, similarly named clients from other packages, method shape alone, shadowed bindings, reassigned bindings, and unsupported dynamic access do not become `CodeMatch` records. Those cases are either ignored or disclosed as limitations.
 
 For OpenAI, the scanner proves `beta.assistants.create` calls whose receiver resolves to an OpenAI client imported from `openai` or loaded with `require("openai")`. It supports same-file aliases, destructuring, and assignment chains. Cross-file aliases, computed access, and other unsupported forms stay visible as limitations instead of becoming guesses. For Cloudflare, it proves exact legacy Workers KV namespace URL literals in source code and supported JSON/TOML configuration values. It does not match the replacement `/storage/kv/namespaces/*` route.
 
@@ -160,7 +162,7 @@ The HTML report presents one clear three-action workflow:
 2. Scan the local repository.
 3. Open the Impact Report.
 
-Each action has visible busy feedback. The workflow announces progress and asynchronous state to assistive technology, moves focus to the new screen heading, supports keyboard use and a skip link, and respects reduced-motion preferences. The report separates authoritative evidence, the capability change, deadline status, proven CodeMatches, and Analysis Limitations.
+Each action has visible busy feedback. The workflow announces progress and asynchronous state to assistive technology, moves focus to the new screen heading, supports keyboard use and a skip link, and respects reduced-motion preferences. The report separates authoritative evidence, the capability change, deadline status, proven `CodeMatch` records, and Analysis Limitations.
 
 ## Current scan boundary
 
@@ -198,6 +200,6 @@ npm run test:browser
 npm test
 ```
 
-The acceptance tests cover notice validation, assertion gates, deadline handling, proven Slack/OpenAI/Cloudflare matches, aliases and assignment chains, decoys, dynamic access, cross-file aliases, limitation-only scans, report generation, the stored-result proof invariant, and the accessible three-action workflow.
+The acceptance tests cover notice validation, assertion gates, deadline handling, collector-health drift signals, proven Slack/OpenAI/Cloudflare matches, aliases and assignment chains, decoys, dynamic access, cross-file aliases, limitation-only scans, report generation, the stored-result proof invariant, and the accessible three-action workflow.
 
 For the product rules and current scope, read [CONTEXT.md](CONTEXT.md) and [docs/product-contract.md](docs/product-contract.md).
