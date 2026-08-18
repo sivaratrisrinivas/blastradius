@@ -68,6 +68,10 @@ Blast Radius creates an `Impact` only when the scan has one or more vendor-prove
 
 An `Analysis Limitation` is different from a `CodeMatch`: it identifies code that resembles the affected usage but that the local analyzer cannot prove. Computed or dynamic endpoint access, such as `slack[endpoint]` or `slack.files[method]`, is disclosed this way. A direct-looking call reached through an unsupported cross-file alias is also left unresolved. Neither case can create an Impact.
 
+Before a notice can produce a `CapabilityChange`, `collect` applies the same proof-first rule to the notice itself. The candidate must come from the curated first-party source, explicitly name the affected capability, clearly connect that capability to a lifecycle event, and use a supported change type such as deprecation, sunset, shutdown, or removal. A candidate that fails one of these checks is withheld from `CapabilityChanges` and `Impacts`; it may still be kept as a diagnostic so the failed check is visible.
+
+Blast Radius keeps the smallest supporting excerpt and the notice's original deadline wording. It normalizes a deadline only when the notice contains one complete, unambiguous date. Partial, relative, ambiguous, and ranged dates are not turned into invented precision. At report time, the supplied report clock labels the deadline as upcoming or past; if no precise date was stated, the report says that the date was not stated. An accepted capability change with no proven `CodeMatch` still produces no `Impact`.
+
 For the Slack example, the scanner recognizes a direct call shaped like:
 
 ```ts
@@ -112,4 +116,4 @@ npm run typecheck
 npm run lint
 ```
 
-The acceptance tests cover the full local workflow, including notice validation, a proven Slack match, report generation, failed collection gates, Slack-shaped decoys, scope or reassignment cases, dynamic endpoint access, cross-file aliases, and limitation-only scans that must not be promoted to Impact.
+The acceptance tests cover the full local workflow, including notice validation, capability-change assertion gates, deadline handling, a proven Slack match, report generation, failed collection gates, Slack-shaped decoys, scope or reassignment cases, dynamic endpoint access, cross-file aliases, and limitation-only scans that must not be promoted to Impact.
