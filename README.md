@@ -64,7 +64,7 @@ node dist/src/cli.js report \
 
 Open `/tmp/blast-radius-demo/impact-report.html` in a browser. The report shows the source notice, its deadline, the proven code location, and any analysis limitations in separate sections.
 
-The OpenAI and Cloudflare examples use the same commands with their fixtures and repositories:
+The OpenAI and Cloudflare examples use the same commands with their fixtures and repositories. Each one can finish with a local HTML report:
 
 ```bash
 node dist/src/cli.js collect \
@@ -73,6 +73,9 @@ node dist/src/cli.js collect \
 node dist/src/cli.js scan fixtures/repository-openai \
   --collection /tmp/blast-radius-demo/openai-notice.json \
   --output /tmp/blast-radius-demo/openai-scan.json
+node dist/src/cli.js report \
+  --scan /tmp/blast-radius-demo/openai-scan.json \
+  --output /tmp/blast-radius-demo/openai-impact-report.html
 
 node dist/src/cli.js collect \
   --fixture fixtures/cloudflare-kv-notice.json \
@@ -80,6 +83,9 @@ node dist/src/cli.js collect \
 node dist/src/cli.js scan fixtures/repository-cloudflare \
   --collection /tmp/blast-radius-demo/cloudflare-notice.json \
   --output /tmp/blast-radius-demo/cloudflare-scan.json
+node dist/src/cli.js report \
+  --scan /tmp/blast-radius-demo/cloudflare-scan.json \
+  --output /tmp/blast-radius-demo/cloudflare-impact-report.html
 ```
 
 If the scanner sees code it cannot prove, the scan still succeeds. It records the relative file path, line number, and a plain-English reason under `Analysis Limitations`. Those locations are not counted as proven matches. A repository with only unresolved usage has no Impact, but the limitation remains visible in the scan output and saved JSON file.
@@ -107,7 +113,7 @@ await slack.files.upload({ channels: channel, file });
 
 The receiver must resolve to a `WebClient` imported from `@slack/web-api`. Comments, strings, unrelated identifiers, similarly named clients from other packages, method shape alone, shadowed bindings, reassigned bindings, and unsupported dynamic access do not become CodeMatches. Those cases are either ignored or disclosed as limitations.
 
-For OpenAI, the scanner proves `beta.assistants.create` calls whose receiver resolves to an OpenAI client. It supports the same-file aliases, destructuring, and assignment chains covered by the acceptance fixtures. For Cloudflare, it proves exact legacy Workers KV namespace URL literals in source code and supported JSON/TOML configuration values. It does not match the replacement `/storage/kv/namespaces/*` route.
+For OpenAI, the scanner proves `beta.assistants.create` calls whose receiver resolves to an OpenAI client imported from `openai` or loaded with `require("openai")`. It supports same-file aliases, destructuring, and assignment chains. Cross-file aliases, computed access, and other unsupported forms stay visible as limitations instead of becoming guesses. For Cloudflare, it proves exact legacy Workers KV namespace URL literals in source code and supported JSON/TOML configuration values. It does not match the replacement `/storage/kv/namespaces/*` route.
 
 ## Accessible local report
 
