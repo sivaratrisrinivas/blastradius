@@ -12,6 +12,7 @@ const cliPath = resolve(repositoryRoot, "dist/src/cli.js");
 const slackFixture = resolve(repositoryRoot, "fixtures/slack-notice.json");
 const driftFixture = resolve(repositoryRoot, "fixtures/collector-health/required-field-collapse.json");
 const zeroResultsFixture = resolve(repositoryRoot, "fixtures/collector-health/zero-results.json");
+const healthyRepairFixture = resolve(repositoryRoot, "fixtures/collector-health/healthy-repair-v2.json");
 
 function runCli(args: string[]) {
   return spawnSync(process.execPath, [cliPath, ...args], {
@@ -49,7 +50,7 @@ test("collector recovery requires validation and approval before a healthy rerun
   assert.equal(proposal.approval.status, "not-requested");
   assert.equal(proposal.activation.status, "not-activated");
 
-  const validated = runCli(["repair", "validate", "--proposal", proposalPath, "--fixture", slackFixture, "--output", validatedPath]);
+  const validated = runCli(["repair", "validate", "--proposal", proposalPath, "--fixture", healthyRepairFixture, "--output", validatedPath]);
   assert.equal(validated.status, 0, validated.stderr);
   const validation = readArtifact(validatedPath);
   assert.equal(validation.stage, "approval-requested");
@@ -76,7 +77,7 @@ test("collector recovery requires validation and approval before a healthy rerun
   assert.equal(activation.activeCollector.version, "fixture-v2");
   assert.equal(activation.rerun.status, "not-run");
 
-  const recovered = runCli(["repair", "rerun", "--proposal", activatedPath, "--fixture", slackFixture, "--output", recoveredPath]);
+  const recovered = runCli(["repair", "rerun", "--proposal", activatedPath, "--fixture", healthyRepairFixture, "--output", recoveredPath]);
   assert.equal(recovered.status, 0, recovered.stderr);
   const recovery = readArtifact(recoveredPath);
   assert.equal(recovery.stage, "recovered");
@@ -121,10 +122,20 @@ test("the Impact Report exposes recovery only as an optional post-report second 
   const collectionPath = resolve(directory, "vendor-notice.json");
   const scanPath = resolve(directory, "scan-result.json");
   const reportPath = resolve(directory, "impact-report.html");
+  const diagnosticPath = resolve(directory, "collector-health.json");
+  const proposalPath = resolve(directory, "repair-proposal.json");
+  const validatedPath = resolve(directory, "repair-validated.json");
+  const activatedPath = resolve(directory, "repair-activated.json");
+  const recoveredPath = resolve(directory, "repair-recovered.json");
 
   assert.equal(runCli(["collect", "--fixture", slackFixture, "--output", collectionPath]).status, 0);
   assert.equal(runCli(["scan", resolve(repositoryRoot, "fixtures/repository"), "--collection", collectionPath, "--output", scanPath]).status, 0);
-  const report = runCli(["report", "--scan", scanPath, "--output", reportPath]);
+  assert.notEqual(runCli(["collect", "--fixture", driftFixture, "--output", diagnosticPath]).status, 0);
+  assert.equal(runCli(["repair", "diagnose", "--diagnostic", diagnosticPath, "--output", proposalPath]).status, 0);
+  assert.equal(runCli(["repair", "validate", "--proposal", proposalPath, "--fixture", healthyRepairFixture, "--output", validatedPath]).status, 0);
+  assert.equal(runCli(["repair", "approve", "--proposal", validatedPath, "--output", activatedPath]).status, 0);
+  assert.equal(runCli(["repair", "rerun", "--proposal", activatedPath, "--fixture", healthyRepairFixture, "--output", recoveredPath]).status, 0);
+  const report = runCli(["report", "--scan", scanPath, "--repair", recoveredPath, "--output", reportPath]);
   assert.equal(report.status, 0, report.stderr);
   const html = readFileSync(reportPath, "utf8");
   assert.match(html, /See how collector recovery works/);

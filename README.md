@@ -137,14 +137,14 @@ node dist/src/cli.js repair diagnose \
   --output /tmp/blast-radius-demo/repair-proposal.json
 node dist/src/cli.js repair validate \
   --proposal /tmp/blast-radius-demo/repair-proposal.json \
-  --fixture fixtures/slack-notice.json \
+  --fixture fixtures/collector-health/healthy-repair-v2.json \
   --output /tmp/blast-radius-demo/repair-validated.json
 node dist/src/cli.js repair approve \
   --proposal /tmp/blast-radius-demo/repair-validated.json \
   --output /tmp/blast-radius-demo/repair-activated.json
 node dist/src/cli.js repair rerun \
   --proposal /tmp/blast-radius-demo/repair-activated.json \
-  --fixture fixtures/slack-notice.json \
+  --fixture fixtures/collector-health/healthy-repair-v2.json \
   --output /tmp/blast-radius-demo/repair-recovered.json
 ```
 

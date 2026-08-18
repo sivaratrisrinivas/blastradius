@@ -1,7 +1,6 @@
 import {
   assertCollectorHealthArtifact,
   assertCollectorRepairArtifact,
-  healthyCollectorHealth,
   type CollectorRepairArtifact,
   type CollectorRepairStage,
   type CollectorIdentity,
@@ -33,6 +32,10 @@ function nonEmptyVersion(version: string | undefined, activeVersion: string): st
 
 function collectorLabel(collector: CollectorIdentity): string {
   return `${collector.identity}@${collector.version}`;
+}
+
+function sameCollector(left: CollectorIdentity, right: CollectorIdentity): boolean {
+  return left.identity === right.identity && left.version === right.version;
 }
 
 function failureMessage(error: Error): string {
@@ -122,6 +125,10 @@ export function validateCollectorRepair(value: JsonValue | CollectorRepairArtifa
     if (proposal.detected.sourceUrl && artifact.notice.sourceUrl !== proposal.detected.sourceUrl) {
       throw new Error("validation fixture source did not match the detected curated source");
     }
+    if (!artifact.collection || !sameCollector(artifact.collection.collector, proposal.proposedCollector)) {
+      throw new Error(`validation fixture collector did not match proposed collector ${collectorLabel(proposal.proposedCollector)}`);
+    }
+    if (!artifact.collectorHealth) throw new Error("validation fixture did not record CollectorHealth");
     return withValidation(
       proposal,
       "approval-requested",
@@ -208,13 +215,16 @@ export function rerunCollectorRepair(value: JsonValue | CollectorRepairArtifact,
     if (proposal.detected.sourceUrl && artifact.notice.sourceUrl !== proposal.detected.sourceUrl) {
       throw new Error("rerun fixture source did not match the detected curated source");
     }
-    const health = healthyCollectorHealth(proposal.activeCollector);
+    if (!artifact.collection || !sameCollector(artifact.collection.collector, proposal.activeCollector)) {
+      throw new Error(`rerun fixture collector did not match active collector ${collectorLabel(proposal.activeCollector)}`);
+    }
+    if (!artifact.collectorHealth) throw new Error("rerun fixture did not record CollectorHealth");
     return assertCollectorRepairArtifact({
       ...proposal,
       stage: "recovered",
       rerun: {
         status: "healthy",
-        collectorHealth: health,
+        collectorHealth: artifact.collectorHealth,
         message: `Healthy rerun completed with ${collectorLabel(proposal.activeCollector)}. CollectorHealth passed zero-results, required-field-collapse, and schema-failure checks only; this does not establish semantic correctness or completeness.`
       }
     });

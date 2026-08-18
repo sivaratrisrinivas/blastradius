@@ -133,7 +133,8 @@ async function run(args: string[]): Promise<void> {
     return;
   }
   if (command === "report") {
-    const report = renderImpactReport(readJson(option(args, "--scan")));
+    const repairPath = optionalOption(args, "--repair");
+    const report = renderImpactReport(readJson(option(args, "--scan")), new Date(), repairPath ? readJson(repairPath) : undefined);
     const outputPath = option(args, "--output");
     mkdirSync(dirname(outputPath), { recursive: true });
     writeFileSync(outputPath, report, "utf8");
