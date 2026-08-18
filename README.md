@@ -22,6 +22,8 @@ The current MVP follows the same three-step path for three curated vendor change
 2. `scan` reads that result and checks one local JavaScript or TypeScript repository. It produces proven `CodeMatch` records and records related code it could not prove separately.
 3. `report` creates a local HTML Impact Report only when the scan found at least one proven match. Unresolved code is shown as an analysis limitation, never as an Impact.
 
+Collector recovery is a separate, optional workflow. When collection health fails, it can diagnose the failure, validate a proposed collector version, wait for explicit approval, and rerun the collection. The normal three-action report does not activate a repair or show recovery details unless you pass a saved repair artifact to `report`.
+
 Repository scanning stays on the local machine. The offline examples use saved notice data, so repository source, paths, snippets, and scan files are never sent to an external service. The optional live collector sends only the selected public vendor URL to Bright Data; it never sends the local repository.
 
 All three examples use the same offline commands. For Cloudflare, the scanner recognizes the old `/accounts/{account_id}/workers/namespaces/*` route and deliberately does not match the replacement `/storage/kv/namespaces/*` route.
@@ -129,7 +131,7 @@ Collection also records a deliberately limited `CollectorHealth` result. It dete
 
 ### Optional collector recovery
 
-After the core Impact Report, the optional recovery workflow can diagnose a stored health failure and propose a new collector version. It validates that proposal against the same collection contract and the three supported health checks, but keeps the old collector active until explicit approval:
+After the core Impact Report, the optional recovery workflow can diagnose a saved health failure and propose a new collector version. It checks that proposal against the same collection rules and three supported health checks, but keeps the old collector active until a person explicitly approves it:
 
 ```bash
 node dist/src/cli.js repair diagnose \
@@ -153,6 +155,8 @@ node dist/src/cli.js report \
 ```
 
 Failed validation is stored as a non-activating repair artifact. An approval attempt without passed validation also fails without changing the active collector. A healthy rerun says only that the three supported checks passed; it does not claim autonomous or guaranteed repair.
+
+The last `report` command adds the recovery status only because it receives the saved `repair-recovered.json` artifact. Without `--repair`, every report stays on the simple three-action path and shows only evidence stored by the normal collection and scan steps.
 
 If the scanner sees code it cannot prove, the scan still succeeds. It records the relative file path, line number, and a plain-English reason under `Analysis Limitations`. Those locations are not counted as proven matches. A repository with only unresolved usage has no Impact, but the limitation remains visible in the scan output and saved JSON file.
 
@@ -207,7 +211,7 @@ Repository contents remain local during scanning. The collection and scan artifa
 - `src/scan/` walks the repository and produces proven CodeMatches and limitations.
 - `src/domain/` defines and validates the versioned notice, scan, CodeMatch, Impact, CollectorHealth, and collector-repair artifacts.
 - `src/report/` renders the local HTML Impact Report.
-- `src/cli.ts` exposes the `collect`, `scan`, and `report` commands.
+- `src/cli.ts` exposes the `collect`, `scan`, `report`, and optional `repair` commands.
 - `fixtures/` contains the vendor notices and small repositories used by the acceptance tests.
 - `test/` verifies behavior through the compiled CLI and filesystem artifacts.
 - `docs/product-contract.md` records the product rules and MVP boundary.
