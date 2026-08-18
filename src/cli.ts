@@ -54,9 +54,16 @@ function run(args: string[]): void {
         `Locations: ${result.impact.codeMatches.map(match => `${match.file}:${match.line}`).join(", ")}`,
         `Deadline: ${result.capabilityChange.deadlineOriginal} (${result.capabilityChange.deadlineIso ?? "not stated"})`
       ].join("\n");
+    const limitationDetails = result.limitations.length === 0
+      ? "Analysis Limitations: none."
+      : [
+        "Analysis Limitations:",
+        ...result.limitations.map(limitation => `- ${limitation.file}:${limitation.line}: ${limitation.reason}`)
+      ].join("\n");
     process.stdout.write([
       `Scanned local repository: ${result.codeMatches.length} proven CodeMatch; ${result.limitations.length} unresolved usage(s).`,
       provenDetails,
+      limitationDetails,
       "Privacy: Repository analysis stayed local; source, paths, snippets, and scan artifacts were not sent externally."
     ].join("\n") + "\n");
     return;

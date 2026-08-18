@@ -24,7 +24,7 @@ function deadlineStatus(deadlineIso: string | null, now: Date): DeadlineStatus {
 
 function locations(scan: ScanArtifact): string {
   return scan.impact?.codeMatches.map(match => `
-    <li class="location">
+    <li class="location" data-record-kind="code-match">
       <strong><code>${escapeHtml(match.file)}:${match.line}</code></strong>
       <code class="snippet">${escapeHtml(match.evidence)}</code>
       <span class="meta">${escapeHtml(match.evidenceStrength)} · ${escapeHtml(match.context)}</span>
@@ -33,7 +33,7 @@ function locations(scan: ScanArtifact): string {
 
 function limitations(scan: ScanArtifact): string {
   if (scan.limitations.length === 0) return "";
-  return `<section class="evidence"><h2>Analysis limitations</h2><p class="muted">These usages were not promoted to CodeMatches because the scanner could not prove them.</p><ul class="locations">${scan.limitations.map(limitation => `<li class="location"><strong><code>${escapeHtml(limitation.file)}:${limitation.line}</code></strong><span>${escapeHtml(limitation.reason)}</span></li>`).join("")}</ul></section>`;
+  return `<section class="evidence" data-section="analysis-limitations" aria-labelledby="analysis-limitations-heading"><h2 id="analysis-limitations-heading">Analysis Limitations</h2><p class="muted">These usages were not promoted to CodeMatches because the scanner could not prove them.</p><ul class="locations">${scan.limitations.map(limitation => `<li class="location" data-record-kind="analysis-limitation"><strong><code>${escapeHtml(limitation.file)}:${limitation.line}</code></strong><span>${escapeHtml(limitation.reason)}</span></li>`).join("")}</ul></section>`;
 }
 
 export function renderImpactReport(value: JsonValue, now = new Date()): string {
@@ -113,8 +113,10 @@ export function renderImpactReport(value: JsonValue, now = new Date()): string {
         <blockquote>${escapeHtml(scan.notice.excerpt)}</blockquote>
         <p class="muted">${escapeHtml(scan.notice.sourceUrl)}</p>
       </div>
-      <h2>Proven code location</h2>
-      <ul class="locations">${locations(scan)}</ul>
+      <section class="evidence" data-section="proven-code-matches" aria-labelledby="proven-code-matches-heading">
+        <h2 id="proven-code-matches-heading">Proven CodeMatches</h2>
+        <ul class="locations">${locations(scan)}</ul>
+      </section>
       ${limitations(scan)}
       <div class="privacy"><strong>Repository analysis stayed local.</strong> Only public vendor material crossed the collection boundary.</div>
     </section>

@@ -1,0 +1,5 @@
+{
+  "name": "slack-unresolved-usage",
+  "private": true,
+  "type": "module"
+}

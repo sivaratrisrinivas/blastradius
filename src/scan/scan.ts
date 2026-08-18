@@ -321,13 +321,44 @@ function slackClientVariableForUpload(expression: ts.Expression): ts.Identifier 
   return ts.isIdentifier(filesAccess.expression) ? filesAccess.expression : null;
 }
 
-function dynamicFilesUpload(expression: ts.Expression): boolean {
-  if (ts.isPropertyAccessExpression(expression) && expression.name.text === "upload" && ts.isElementAccessExpression(expression.expression)) {
-    return ts.isStringLiteral(expression.expression.argumentExpression) && expression.expression.argumentExpression.text === "files";
+interface MemberAccessSegment {
+  name: string | null;
+  computed: boolean;
+}
+
+interface MemberAccessPath {
+  base: ts.Expression;
+  segments: MemberAccessSegment[];
+}
+
+function memberAccessPath(expression: ts.Expression): MemberAccessPath | null {
+  const segments: MemberAccessSegment[] = [];
+  let current = expression;
+  while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+    if (ts.isPropertyAccessExpression(current)) {
+      segments.unshift({ name: current.name.text, computed: false });
+      current = current.expression;
+      continue;
+    }
+    const argument = current.argumentExpression;
+    segments.unshift({
+      name: argument !== undefined && ts.isStringLiteral(argument) ? argument.text : null,
+      computed: true
+    });
+    current = current.expression;
   }
-  if (!ts.isElementAccessExpression(expression)) return false;
-  const filesAccess = expression.expression;
-  return (ts.isElementAccessExpression(filesAccess) || ts.isPropertyAccessExpression(filesAccess)) && ((ts.isElementAccessExpression(filesAccess) && ts.isStringLiteral(filesAccess.argumentExpression) && filesAccess.argumentExpression.text === "files") || (ts.isPropertyAccessExpression(filesAccess) && filesAccess.name.text === "files"));
+  return segments.length === 0 ? null : { base: current, segments };
+}
+
+function unsupportedSlackEndpointAccess(expression: ts.Expression, scopeModel: ScopeModel): boolean {
+  const access = memberAccessPath(expression);
+  if (access === null || !ts.isIdentifier(access.base)) return false;
+  if (access.segments.length === 1) {
+    return access.segments[0].computed && isProvenSlackClient(access.base, scopeModel);
+  }
+  const endpointSegments = access.segments.slice(-2);
+  const namesIdentifyFilesUpload = endpointSegments.every(segment => segment.name === null || segment.name === "files" || segment.name === "upload");
+  return namesIdentifyFilesUpload && endpointSegments.some(segment => segment.computed);
 }
 
 function repositoryLocation(file: string, repositoryRoot: string, sourceFile: ts.SourceFile, node: ts.Node): RepositoryLocation {
@@ -369,9 +400,12 @@ function matchesInFile(file: string, repositoryRoot: string, capabilityChange: C
         });
       } else if (receiver) {
         addLimitation(node, "The files.upload receiver is not proven to be a Slack client.");
-      } else if ((ts.isElementAccessExpression(node.expression) && ts.isPropertyAccessExpression(node.expression.expression) && node.expression.expression.name.text === "files") || dynamicFilesUpload(node.expression)) {
-        addLimitation(node, "Computed files method access cannot be statically proven.");
+      } else if (unsupportedSlackEndpointAccess(node.expression, scopeModel)) {
+        addLimitation(node, "Computed or dynamic Slack endpoint access cannot be statically proven.");
       }
+    }
+    if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && unsupportedSlackEndpointAccess(node, scopeModel) && !ts.isCallExpression(node.parent)) {
+      addLimitation(node, "Computed or dynamic Slack endpoint access cannot be statically proven.");
     }
     if (ts.isPropertyAccessExpression(node) && node.name.text === "upload" && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "files" && !ts.isCallExpression(node.parent)) {
       addLimitation(node, "A files.upload reference was not used as a directly provable call.");
