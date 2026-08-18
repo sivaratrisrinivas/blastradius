@@ -643,6 +643,7 @@ export function scanLocalRepository(repositoryPath: string, notice: VendorNotice
   return {
     schemaVersion: 1,
     kind: "scan-result",
+    collection: notice.collection,
     notice: notice.notice,
     capabilityChange: notice.capabilityChange,
     codeMatches,

@@ -94,6 +94,8 @@ node dist/src/cli.js report \
   --output /tmp/blast-radius-demo/cloudflare-impact-report.html
 ```
 
+For the opt-in live Bright Data path, configure a Bright Data API key and published Scraper Studio Collector ID in the ignored root `.env` file. The adapter sends only the curated public vendor URL, validates the returned collection, and emits the same artifact shape as fixtures. See [docs/brightdata-collection.md](docs/brightdata-collection.md) for the collector output schema and `npm run test:brightdata` for the narrow live contract check.
+
 If the scanner sees code it cannot prove, the scan still succeeds. It records the relative file path, line number, and a plain-English reason under `Analysis Limitations`. Those locations are not counted as proven matches. A repository with only unresolved usage has no Impact, but the limitation remains visible in the scan output and saved JSON file.
 
 ## How evidence works
@@ -142,6 +144,7 @@ Repository contents remain local during scanning. The collection and scan artifa
 ## Project layout
 
 - `src/collection/` validates the committed vendor notice fixture.
+- `src/collection/bright-data.ts` contains the opt-in public Bright Data collection adapter.
 - `src/scan/` walks the repository and produces proven CodeMatches and limitations.
 - `src/domain/` defines and validates the versioned notice, scan, CodeMatch, and Impact artifacts.
 - `src/report/` renders the local HTML Impact Report.

@@ -2,6 +2,7 @@ import { evaluateCapabilityChangeCandidate, explicitDeadlineIso } from "./assert
 import { capabilityForIdentifier, capabilityForSourceUrl, type Vendor } from "./capabilities.js";
 
 export const ARTIFACT_SCHEMA_VERSION = 1 as const;
+export const COLLECTION_SCHEMA_VERSION = 1 as const;
 export const SLACK_VENDOR_NOTICE_SOURCE_URL = "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/";
 export const SLACK_VENDOR_NOTICE_EXCERPT = "The files.upload method stopped functioning on November 12, 2025.";
 export const OPENAI_VENDOR_NOTICE_SOURCE_URL = "https://developers.openai.com/api/docs/assistants/migration";
@@ -24,6 +25,26 @@ export interface VendorNotice {
   excerpt: string;
 }
 
+export interface CollectorIdentity extends JsonObject {
+  identity: string;
+  version: string;
+}
+
+export interface VendorNoticeCollection extends JsonObject {
+  schemaVersion: typeof COLLECTION_SCHEMA_VERSION;
+  kind: "vendor-notice-collection";
+  vendor: Vendor;
+  sourceUrl: string;
+  retrievedAt: string;
+  collector: CollectorIdentity;
+  content: string;
+  excerpt: string;
+  capabilityIdentifier: string;
+  changeType: string;
+  deadlineOriginal: string;
+  deadlineIso: string | null;
+}
+
 export interface CapabilityChange {
   vendor: Vendor;
   canonicalIdentifier: string;
@@ -35,6 +56,7 @@ export interface CapabilityChange {
 export interface VendorNoticeArtifact {
   schemaVersion: typeof ARTIFACT_SCHEMA_VERSION;
   kind: "vendor-notice";
+  collection?: VendorNoticeCollection;
   notice: VendorNotice;
   capabilityChange: CapabilityChange;
 }
@@ -67,6 +89,7 @@ export interface Impact {
 export interface ScanArtifact {
   schemaVersion: typeof ARTIFACT_SCHEMA_VERSION;
   kind: "scan-result";
+  collection?: VendorNoticeCollection;
   notice: VendorNotice;
   capabilityChange: CapabilityChange;
   codeMatches: CodeMatch[];
@@ -137,6 +160,60 @@ function parseNotice(value: JsonValue): VendorNotice {
   if (Number.isNaN(Date.parse(retrievedAt))) throw new Error("notice.retrievedAt must be an ISO timestamp");
   const excerpt = asString(value.excerpt, "notice.excerpt");
   return { vendor, sourceUrl, retrievedAt, excerpt };
+}
+
+function parseCollectorIdentity(value: JsonValue): CollectorIdentity {
+  if (!isRecord(value)) throw new Error("collection.collector must be an object");
+  return {
+    identity: asString(value.identity, "collection.collector.identity"),
+    version: asString(value.version, "collection.collector.version")
+  };
+}
+
+function parseCollection(
+  value: JsonValue,
+  expectedNotice: VendorNotice,
+  expectedChange: CapabilityChange
+): VendorNoticeCollection {
+  if (!isRecord(value) || value.schemaVersion !== COLLECTION_SCHEMA_VERSION || value.kind !== "vendor-notice-collection") {
+    throw new Error("vendor-notice collection has an unsupported schema");
+  }
+  const vendorValue = asString(value.vendor, "collection.vendor");
+  const sourceUrl = asString(value.sourceUrl, "collection.sourceUrl");
+  const capability = capabilityForSourceUrl(sourceUrl);
+  if (!capability || capability.vendor !== vendorValue) throw new Error("collection.sourceUrl is not a curated first-party source");
+  const vendor = capability.vendor;
+  const retrievedAt = asString(value.retrievedAt, "collection.retrievedAt");
+  if (Number.isNaN(Date.parse(retrievedAt))) throw new Error("collection.retrievedAt must be an ISO timestamp");
+  const collector = parseCollectorIdentity(value.collector);
+  const content = asString(value.content, "collection.content");
+  const excerpt = asString(value.excerpt, "collection.excerpt");
+  const capabilityIdentifier = asString(value.capabilityIdentifier, "collection.capabilityIdentifier");
+  if (!capability.acceptedIdentifiers.includes(capabilityIdentifier)) throw new Error("collection.capabilityIdentifier is not curated");
+  const changeType = asString(value.changeType, "collection.changeType");
+  if (!isChangeType(changeType)) throw new Error("collection.changeType is not allowed");
+  const deadlineOriginal = asString(value.deadlineOriginal, "collection.deadlineOriginal");
+  const deadlineIso = value.deadlineIso === null ? null : asString(value.deadlineIso, "collection.deadlineIso");
+  if (vendor !== expectedNotice.vendor || sourceUrl !== expectedNotice.sourceUrl || retrievedAt !== expectedNotice.retrievedAt || excerpt !== expectedNotice.excerpt) {
+    throw new Error("collection does not match the VendorNotice");
+  }
+  if (vendor !== expectedChange.vendor || capabilityIdentifier !== expectedChange.canonicalIdentifier || changeType !== expectedChange.changeType || deadlineOriginal !== expectedChange.deadlineOriginal || deadlineIso !== expectedChange.deadlineIso) {
+    throw new Error("collection does not match the CapabilityChange");
+  }
+  return {
+    schemaVersion: COLLECTION_SCHEMA_VERSION,
+    kind: "vendor-notice-collection",
+    vendor,
+    sourceUrl,
+    retrievedAt,
+    collector,
+    content,
+    excerpt,
+    capabilityIdentifier,
+    changeType,
+    deadlineOriginal,
+    deadlineIso
+  };
 }
 
 function parseCapabilityChange(value: JsonValue, notice?: VendorNotice): CapabilityChange {
@@ -216,7 +293,8 @@ export function assertVendorNoticeArtifact(value: JsonValue): VendorNoticeArtifa
   const notice = parseNotice(value.notice);
   const capabilityChange = parseCapabilityChange(value.capabilityChange, notice);
   assertCapabilityChangeGates(notice, capabilityChange);
-  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "vendor-notice", notice, capabilityChange };
+  const collection = value.collection === undefined ? undefined : parseCollection(value.collection, notice, capabilityChange);
+  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "vendor-notice", collection, notice, capabilityChange };
 }
 
 export function assertScanArtifact(value: JsonValue): ScanArtifact {
@@ -229,6 +307,7 @@ export function assertScanArtifact(value: JsonValue): ScanArtifact {
   const notice = parseNotice(value.notice);
   const capabilityChange = parseCapabilityChange(value.capabilityChange, notice);
   assertCapabilityChangeGates(notice, capabilityChange);
+  const collection = value.collection === undefined ? undefined : parseCollection(value.collection, notice, capabilityChange);
   const codeMatches = value.codeMatches.map(codeMatch => parseCodeMatch(codeMatch, capabilityChange));
   const limitations = value.limitations.map(parseLimitation);
   if (codeMatches.length > 0 && value.impact === null) throw new Error("scan-result with proven CodeMatches must contain an Impact");
@@ -244,5 +323,5 @@ export function assertScanArtifact(value: JsonValue): ScanArtifact {
     if (impactMatches.length === 0) throw new Error("Impact requires at least one proven CodeMatch");
     impact = { capabilityChange: impactChange, codeMatches: impactMatches };
   }
-  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "scan-result", notice, capabilityChange, codeMatches, limitations, impact };
+  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "scan-result", collection, notice, capabilityChange, codeMatches, limitations, impact };
 }

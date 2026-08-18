@@ -82,5 +82,9 @@ export function capabilityForPackage(packageName: string): CuratedCapability | u
   return CURATED_CAPABILITIES.find(capability => capability.packageName === packageName && packageName !== "");
 }
 
+export function curatedSourceUrlForVendor(vendor: Vendor): string | undefined {
+  return CURATED_CAPABILITIES.find(capability => capability.vendor === vendor)?.sourceUrl;
+}
+
 export const curatedCapabilityForSourceUrl = capabilityForSourceUrl;
 export const curatedCapabilityForIdentifier = capabilityForIdentifier;

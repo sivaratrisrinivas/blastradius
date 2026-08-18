@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
+import { collectBrightDataVendorNotice, brightDataConfigFromEnvironment, loadEnvironmentFile } from "./collection/bright-data.js";
 import { collectVendorNotice } from "./collection/collect.js";
+import { curatedSourceUrlForVendor, type Vendor } from "./domain/capabilities.js";
 import { assertVendorNoticeArtifact, parseJson, type JsonValue, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
 import { renderImpactReport } from "./report/render.js";
 import { scanLocalRepository } from "./scan/scan.js";
@@ -12,6 +14,19 @@ function option(args: string[], name: string): string {
   const value = args[index + 1];
   if (!value || value.startsWith("--")) throw new Error(`missing ${name}`);
   return value;
+}
+
+function optionalOption(args: string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  if (index === -1) return undefined;
+  const value = args[index + 1];
+  if (!value || value.startsWith("--")) throw new Error(`missing ${name}`);
+  return value;
+}
+
+function vendorOption(value: string): Vendor {
+  if (value === "Slack" || value === "OpenAI" || value === "Cloudflare") return value;
+  throw new Error(`unsupported vendor ${value}; expected Slack, OpenAI, or Cloudflare`);
 }
 
 function writeJson(path: string, value: VendorNoticeArtifact | ScanArtifact): void {
@@ -27,13 +42,24 @@ function readJson(path: string): JsonValue {
   }
 }
 
-function run(args: string[]): void {
+async function run(args: string[]): Promise<void> {
   const command = args[0];
   if (command === "collect") {
-    const artifact = collectVendorNotice(option(args, "--fixture"));
+    loadEnvironmentFile(resolve(process.cwd(), ".env"));
+    const artifact = args.includes("--live")
+      ? await collectBrightDataVendorNotice(
+        (() => {
+          const vendor = vendorOption(option(args, "--vendor"));
+          const sourceUrl = optionalOption(args, "--source-url") ?? curatedSourceUrlForVendor(vendor);
+          if (!sourceUrl) throw new Error(`no curated source is configured for ${vendor}`);
+          return { vendor, sourceUrl };
+        })(),
+        brightDataConfigFromEnvironment()
+      )
+      : collectVendorNotice(option(args, "--fixture"));
     writeJson(option(args, "--output"), artifact);
     process.stdout.write([
-      `Verified ${artifact.notice.vendor} VendorNotice and stored ${artifact.capabilityChange.canonicalIdentifier}.`,
+      `Verified ${artifact.notice.vendor} VendorNotice from ${artifact.collection?.collector.identity ?? "stored collection"} and stored ${artifact.capabilityChange.canonicalIdentifier}.`,
       `Source: ${artifact.notice.sourceUrl}`,
       `Evidence: ${artifact.notice.excerpt}`,
       `Deadline: ${artifact.capabilityChange.deadlineOriginal} (${artifact.capabilityChange.deadlineIso ?? "not stated"})`
@@ -80,7 +106,7 @@ function run(args: string[]): void {
 }
 
 try {
-  run(process.argv.slice(2));
+  await run(process.argv.slice(2));
 } catch (error) {
   process.stderr.write(`blast: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;
