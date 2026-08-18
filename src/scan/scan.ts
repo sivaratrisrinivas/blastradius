@@ -181,9 +181,10 @@ function createScopeModel(sourceFile: ts.SourceFile): ScopeModel {
     if (ts.isImportDeclaration(statement)) {
       const importClause = statement.importClause;
       if (!importClause) return;
+      const moduleName = ts.isStringLiteral(statement.moduleSpecifier) ? statement.moduleSpecifier.text : "";
       if (importClause.name) {
         addBinding(scope, importClause.name.text, {
-          kind: statement.moduleSpecifier.getText().replaceAll('"', "") === "openai" ? "openai-constructor" : "unknown"
+          kind: moduleName === "openai" ? "openai-constructor" : "unknown"
         });
       }
       if (importClause.namedBindings && ts.isNamespaceImport(importClause.namedBindings)) {
@@ -191,7 +192,6 @@ function createScopeModel(sourceFile: ts.SourceFile): ScopeModel {
       }
       if (importClause.namedBindings && ts.isNamedImports(importClause.namedBindings)) {
         for (const element of importClause.namedBindings.elements) {
-          const moduleName = ts.isStringLiteral(statement.moduleSpecifier) ? statement.moduleSpecifier.text : "";
           const isSlackConstructor = moduleName === "@slack/web-api" && (element.propertyName?.text === "WebClient" || element.name.text === "WebClient");
           const isOpenAIConstructor = moduleName === "openai" && (element.propertyName?.text === "OpenAI" || element.name.text === "OpenAI" || element.propertyName?.text === "default");
           addBinding(scope, element.name.text, { kind: isSlackConstructor ? "slack-constructor" : isOpenAIConstructor ? "openai-constructor" : "unknown" });

@@ -1,6 +1,6 @@
 # Blast Radius
 
-Blast Radius connects an authoritative third-party API shutdown notice to the code locations it can prove use the affected capability.
+Blast Radius connects an official vendor notice to the code locations it can prove use the affected API or route.
 
 The project is deliberately cautious:
 
@@ -10,7 +10,7 @@ That rule is the most important part of the product. A name that looks like a ve
 
 ## What the prototype does
 
-The current command-line prototype demonstrates three vendor changes:
+The command-line prototype follows the same simple path for three vendor changes:
 
 | Vendor | Affected capability | Deadline |
 | --- | --- | --- |
@@ -18,13 +18,13 @@ The current command-line prototype demonstrates three vendor changes:
 | OpenAI | Assistants API | August 26, 2026 |
 | Cloudflare | Legacy Workers KV namespace routes | October 15, 2026 |
 
-1. `collect` validates a committed, first-party vendor notice fixture and writes a versioned `VendorNotice` artifact.
-2. `scan` reads that notice and scans one local JavaScript or TypeScript repository for proven uses of the affected capability. Cloudflare also recognizes exact legacy KV route literals and structured JSON/TOML configuration values. It prints proven `CodeMatch` records and unresolved uses in separate sections.
-3. `report` creates a local HTML Impact Report, but only when the scan contains at least one proven `CodeMatch`. When limitations exist, the report shows them in their own section.
+1. `collect` checks a saved copy of an official vendor notice and stores the verified result.
+2. `scan` reads that result and checks one local JavaScript or TypeScript repository for uses it can prove. It prints proven `CodeMatch` records separately from code it could not prove.
+3. `report` creates a local HTML Impact Report only when the scan found at least one proven match. Any unresolved code is shown in its own section.
 
-The repository scan stays on the local machine. The current demonstrations use stored fixture data for the vendor notices; they do not send repository source, paths, snippets, or scan artifacts to an external service.
+Repository scanning stays on the local machine. The examples use saved notice data, so repository source, paths, snippets, and scan files are never sent to an external service.
 
-The same offline CLI path is used for all three MVP examples. The Cloudflare matcher recognizes `/accounts/{account_id}/workers/namespaces/*`; the replacement `/storage/kv/namespaces/*` route is deliberately not matched.
+All three examples use the same offline commands. For Cloudflare, the scanner recognizes the old `/accounts/{account_id}/workers/namespaces/*` route and deliberately does not match the replacement `/storage/kv/namespaces/*` route.
 
 ## Quick start
 
@@ -82,15 +82,15 @@ node dist/src/cli.js scan fixtures/repository-cloudflare \
   --output /tmp/blast-radius-demo/cloudflare-scan.json
 ```
 
-If the scanner finds usage that it cannot prove, the scan still succeeds. Its output includes an `Analysis Limitations` section with the repository-relative file, one-based line number, and a plain-English reason. Those locations are not counted as proven matches. A repository with only unresolved usage therefore has no Impact, but the limitation is still visible in the scan output and stored JSON artifact.
+If the scanner sees code it cannot prove, the scan still succeeds. It records the relative file path, line number, and a plain-English reason under `Analysis Limitations`. Those locations are not counted as proven matches. A repository with only unresolved usage has no Impact, but the limitation remains visible in the scan output and saved JSON file.
 
 ## How evidence works
 
 A `CodeMatch` contains the vendor, capability identifier, repository-relative file, line, evidence strength, context, and source line that supports the match.
 
-Blast Radius creates an `Impact` only when the scan has one or more vendor-provenanced `CodeMatch` records. If it cannot prove a use, it records an analysis limitation instead. A repository with no proven match is reported as having no Impact, and the report command refuses to create a confirmed Impact Report.
+Blast Radius creates an `Impact` only when the scan has one or more proven matches tied to the right vendor and capability. If it cannot prove a use, it records an analysis limitation instead. A repository with no proven match has no Impact, and the report command refuses to create a confirmed report.
 
-An `Analysis Limitation` is different from a `CodeMatch`: it identifies code that resembles the affected usage but that the local analyzer cannot prove. Computed or dynamic endpoint access, such as `slack[endpoint]` or `slack.files[method]`, is disclosed this way. A direct-looking call reached through an unsupported cross-file alias is also left unresolved. Neither case can create an Impact.
+An `Analysis Limitation` is different from a `CodeMatch`: it identifies code that looks related but that the local analyzer cannot prove. Computed or dynamic access, such as `slack[endpoint]` or `slack.files[method]`, is disclosed this way. A direct-looking call reached through an unsupported cross-file alias is also left unresolved. Neither case can create an Impact.
 
 Before a notice can produce a `CapabilityChange`, `collect` applies the same proof-first rule to the notice itself. The candidate must come from the curated first-party source, explicitly name the affected capability, clearly connect that capability to a lifecycle event, and use a supported change type such as deprecation, sunset, shutdown, or removal. A candidate that fails one of these checks is withheld from `CapabilityChanges` and `Impacts`; it may still be kept as a diagnostic so the failed check is visible.
 
