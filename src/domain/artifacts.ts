@@ -1,3 +1,5 @@
+import { evaluateCapabilityChangeCandidate, explicitDeadlineIso } from "./assertions.js";
+
 export const ARTIFACT_SCHEMA_VERSION = 1 as const;
 export const SLACK_VENDOR_NOTICE_SOURCE_URL = "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/";
 export const SLACK_VENDOR_NOTICE_EXCERPT = "The files.upload method stopped functioning on November 12, 2025.";
@@ -119,21 +121,6 @@ export function isExactDate(value: string): boolean {
   return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
 }
 
-function explicitDateIso(value: string): string | null {
-  const match = /^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})$/.exec(value);
-  if (!match) return null;
-  const month = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].indexOf(match[1]);
-  const date = new Date(Date.UTC(Number(match[3]), month, Number(match[2])));
-  return date.getUTCMonth() === month && date.getUTCDate() === Number(match[2])
-    ? date.toISOString().slice(0, 10)
-    : null;
-}
-
-function explicitDateIsoInText(value: string): string | null {
-  const match = /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b/.exec(value);
-  return match === null ? null : explicitDateIso(match[0]);
-}
-
 function parseNotice(value: JsonValue): VendorNotice {
   if (!isRecord(value)) throw new Error("notice must be an object");
   if (value.vendor !== "Slack") throw new Error("notice.vendor must be Slack");
@@ -142,7 +129,6 @@ function parseNotice(value: JsonValue): VendorNotice {
   const retrievedAt = asString(value.retrievedAt, "notice.retrievedAt");
   if (Number.isNaN(Date.parse(retrievedAt))) throw new Error("notice.retrievedAt must be an ISO timestamp");
   const excerpt = asString(value.excerpt, "notice.excerpt");
-  if (excerpt !== SLACK_VENDOR_NOTICE_EXCERPT) throw new Error("notice.excerpt is not the curated Slack evidence");
   return { vendor: "Slack", sourceUrl, retrievedAt, excerpt };
 }
 
@@ -156,26 +142,29 @@ function parseCapabilityChange(value: JsonValue): CapabilityChange {
   if (!isChangeType(changeTypeValue)) throw new Error("capabilityChange.changeType is not allowed");
   const deadlineOriginal = asString(value.deadlineOriginal, "capabilityChange.deadlineOriginal");
   const deadlineIso = value.deadlineIso === null ? null : asString(value.deadlineIso, "capabilityChange.deadlineIso");
-  if (deadlineIso === null) {
-    if (explicitDateIso(deadlineOriginal) !== null) throw new Error("exact deadline wording must have deadlineIso");
-  } else {
-    if (!isExactDate(deadlineIso) || explicitDateIso(deadlineOriginal) === null) {
-      throw new Error("capabilityChange.deadlineIso must match an exact deadline wording");
-    }
-    if (explicitDateIso(deadlineOriginal) !== deadlineIso) {
-      throw new Error("capabilityChange.deadlineIso does not match deadlineOriginal");
-    }
+  const expectedDeadlineIso = explicitDeadlineIso(deadlineOriginal);
+  if (deadlineIso !== expectedDeadlineIso) {
+    throw new Error(expectedDeadlineIso === null
+      ? "capabilityChange.deadlineIso must be null when the deadline wording is not an unambiguous full date"
+      : "capabilityChange.deadlineIso must match an exact deadline wording");
   }
+  if (deadlineIso !== null && !isExactDate(deadlineIso)) throw new Error("capabilityChange.deadlineIso must be a valid exact date");
   return { vendor: "Slack", canonicalIdentifier: "slack.files.upload", changeType: changeTypeValue, deadlineOriginal, deadlineIso };
 }
 
-function assertDeadlineEvidence(notice: VendorNotice, capabilityChange: CapabilityChange): void {
-  const excerptDate = explicitDateIsoInText(notice.excerpt);
-  if (excerptDate !== null && capabilityChange.deadlineIso !== excerptDate) {
-    throw new Error("capabilityChange.deadlineIso does not match the notice evidence");
-  }
-  if (excerptDate === null && capabilityChange.deadlineIso !== null) {
-    throw new Error("capabilityChange.deadlineIso has no matching date in the notice evidence");
+function assertCapabilityChangeGates(notice: VendorNotice, capabilityChange: CapabilityChange): void {
+  const result = evaluateCapabilityChangeCandidate({
+    vendor: notice.vendor,
+    sourceUrl: notice.sourceUrl,
+    retrievedAt: notice.retrievedAt,
+    excerpt: notice.excerpt,
+    capabilityIdentifier: capabilityChange.canonicalIdentifier,
+    changeType: capabilityChange.changeType,
+    deadlineOriginal: capabilityChange.deadlineOriginal,
+    deadlineIso: capabilityChange.deadlineIso
+  });
+  if (!result.accepted) {
+    throw new Error(`CapabilityChange assertion gates failed: ${result.failures.map(failure => `${failure.gate}: ${failure.message}`).join("; ")}`);
   }
 }
 
@@ -210,7 +199,7 @@ export function assertVendorNoticeArtifact(value: JsonValue): VendorNoticeArtifa
   }
   const notice = parseNotice(value.notice);
   const capabilityChange = parseCapabilityChange(value.capabilityChange);
-  assertDeadlineEvidence(notice, capabilityChange);
+  assertCapabilityChangeGates(notice, capabilityChange);
   return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "vendor-notice", notice, capabilityChange };
 }
 
@@ -223,9 +212,11 @@ export function assertScanArtifact(value: JsonValue): ScanArtifact {
   }
   const notice = parseNotice(value.notice);
   const capabilityChange = parseCapabilityChange(value.capabilityChange);
-  assertDeadlineEvidence(notice, capabilityChange);
+  assertCapabilityChangeGates(notice, capabilityChange);
   const codeMatches = value.codeMatches.map(parseCodeMatch);
   const limitations = value.limitations.map(parseLimitation);
+  if (codeMatches.length > 0 && value.impact === null) throw new Error("scan-result with proven CodeMatches must contain an Impact");
+  if (codeMatches.length === 0 && value.impact !== null) throw new Error("scan-result without a proven CodeMatch cannot contain an Impact");
   let impact: Impact | null = null;
   if (value.impact !== null) {
     if (!isRecord(value.impact) || !Array.isArray(value.impact.codeMatches)) throw new Error("scan-result impact is malformed");

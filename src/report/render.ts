@@ -15,7 +15,7 @@ function escapeHtml(value: string): string {
   })[character] ?? character);
 }
 
-function deadlineStatus(deadlineIso: string | null, now: Date): DeadlineStatus {
+export function deadlineStatus(deadlineIso: string | null, now: Date): DeadlineStatus {
   if (deadlineIso === null) return "date-not-stated";
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const deadline = Date.parse(`${deadlineIso}T00:00:00.000Z`);

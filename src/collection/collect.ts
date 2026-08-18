@@ -5,13 +5,11 @@ import {
   asString,
   isChangeType,
   isRecord,
-  isExactDate,
   parseJson,
-  SLACK_VENDOR_NOTICE_EXCERPT,
-  SLACK_VENDOR_NOTICE_SOURCE_URL,
   type JsonValue,
   type VendorNoticeArtifact
 } from "../domain/artifacts.js";
+import { evaluateCapabilityChangeCandidate, type CapabilityChangeCandidate } from "../domain/assertions.js";
 
 export function collectSlackNotice(fixturePath: string): VendorNoticeArtifact {
   let fixture: JsonValue;
@@ -27,21 +25,29 @@ export function collectSlackNotice(fixturePath: string): VendorNoticeArtifact {
   const retrievedAt = asString(fixture.retrievedAt, "retrievedAt");
   const excerpt = asString(fixture.excerpt, "excerpt");
   const capabilityIdentifier = asString(fixture.capabilityIdentifier, "capabilityIdentifier");
-  const changeTypeValue = asString(fixture.changeType, "changeType");
-  if (!isChangeType(changeTypeValue)) throw new Error("collection fixture has an unsupported change type");
+  const changeType = asString(fixture.changeType, "changeType");
   const deadlineOriginal = asString(fixture.deadlineOriginal, "deadlineOriginal");
   const deadlineIso = fixture.deadlineIso === null ? null : asString(fixture.deadlineIso, "deadlineIso");
+  const candidate: CapabilityChangeCandidate = {
+    vendor,
+    sourceUrl,
+    retrievedAt,
+    excerpt,
+    capabilityIdentifier,
+    changeType,
+    deadlineOriginal,
+    deadlineIso
+  };
+  const assertion = evaluateCapabilityChangeCandidate(candidate);
 
-  if (vendor !== "Slack" || sourceUrl !== SLACK_VENDOR_NOTICE_SOURCE_URL) {
+  if (assertion.failures.some(failure => failure.gate === "provenance")) {
     throw new Error("collection fixture is not an allowed first-party Slack source");
   }
-  if (excerpt !== SLACK_VENDOR_NOTICE_EXCERPT) throw new Error("collection excerpt is not the committed verbatim Slack evidence");
-  if (capabilityIdentifier !== "slack.files.upload") {
-    throw new Error("collection fixture does not name Slack files.upload");
+  if (!assertion.accepted) {
+    throw new Error(`collection candidate failed assertion gates: ${assertion.failures.map(failure => `${failure.gate}: ${failure.message}`).join("; ")}`);
   }
-  if (changeTypeValue !== "shutdown" || deadlineIso === null || !isExactDate(deadlineIso)) {
-    throw new Error("collection fixture does not contain an allowed change and exact deadline");
-  }
+  if (!isChangeType(changeType)) throw new Error("collection candidate has an unsupported change type");
+  if (vendor !== "Slack" || capabilityIdentifier !== "slack.files.upload") throw new Error("collection candidate is not the supported Slack capability");
 
   return assertVendorNoticeArtifact({
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
@@ -50,7 +56,7 @@ export function collectSlackNotice(fixturePath: string): VendorNoticeArtifact {
     capabilityChange: {
       vendor: "Slack",
       canonicalIdentifier: "slack.files.upload",
-      changeType: changeTypeValue,
+      changeType,
       deadlineOriginal,
       deadlineIso
     }
