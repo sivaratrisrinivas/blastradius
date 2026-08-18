@@ -27,6 +27,7 @@ export interface CandidateAssertionResult {
 const ALLOWED_CHANGE_TYPES = new Set(["deprecation", "sunset", "shutdown", "removal"]);
 const LIFECYCLE_LANGUAGE = "(?:deprecat(?:e|ed|es|ing|ion)|sunset(?:s|ting|ted)?|shutdown|shut\\s+down|stop(?:s|ped)?\\s+(?:functioning|working)|cease(?:s|d)?\\s+(?:functioning|working)|remov(?:e|ed|es|ing|al))";
 const LIFECYCLE_BRIDGE_WORDS = "(?:method|api|endpoint|will|is|was|has|have|been|be|the|to|for|scheduled|set|marked|being|no|longer)";
+const LIFECYCLE_SEPARATOR = "[\\s,;:()\\-]+";
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const NATURAL_DATE_PATTERN = /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s+(\d{4})\b/g;
@@ -75,7 +76,7 @@ function hasRelatedLifecycleEvidence(value: string, capability: CuratedCapabilit
   const escapedIdentifier = capability.evidenceIdentifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const relatedLifecycle = capability.matcher === "cloudflare-kv-legacy-routes"
     ? new RegExp(`${escapedIdentifier}[^.!?]{0,220}\\s+${LIFECYCLE_LANGUAGE}`, "i")
-    : new RegExp(`${escapedIdentifier}(?:\\s+${LIFECYCLE_BRIDGE_WORDS}){0,5}\\s+${LIFECYCLE_LANGUAGE}`, "i");
+    : new RegExp(`${escapedIdentifier}(?:${LIFECYCLE_SEPARATOR}${LIFECYCLE_BRIDGE_WORDS}){0,5}${LIFECYCLE_SEPARATOR}${LIFECYCLE_LANGUAGE}`, "i");
   return sentences.some((sentence, index) => {
     if (relatedLifecycle.test(sentence)) return true;
     const nextSentence = sentences[index + 1];

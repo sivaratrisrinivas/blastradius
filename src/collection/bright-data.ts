@@ -52,7 +52,10 @@ function optionalField(record: JsonObject, fallback: string, field: string, ...a
 
 function parseDeadlineIso(record: JsonObject): string | null {
   const value = valueFrom(record, "deadlineIso", "deadline_iso");
-  return value === undefined || value === null ? null : asString(value, "Bright Data record deadlineIso");
+  if (value === undefined || value === null) return null;
+  const deadlineIso = asString(value, "Bright Data record deadlineIso");
+  const midnightTimestamp = /^(\d{4}-\d{2}-\d{2})T00:00:00(?:\.\d{3})?Z$/.exec(deadlineIso);
+  return midnightTimestamp?.[1] ?? deadlineIso;
 }
 
 function normalizedApiBaseUrl(value: string): string {

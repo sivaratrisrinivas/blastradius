@@ -94,7 +94,34 @@ node dist/src/cli.js report \
   --output /tmp/blast-radius-demo/cloudflare-impact-report.html
 ```
 
-For the opt-in live Bright Data path, configure a Bright Data API key and published Scraper Studio Collector ID in the ignored root `.env` file. The adapter sends only the curated public vendor URL, validates the returned collection, and emits the same artifact shape as fixtures. See [docs/brightdata-collection.md](docs/brightdata-collection.md) for the collector output schema and `npm run test:brightdata` for the narrow live contract check.
+### Optional live Bright Data collection
+
+The normal demo is offline and uses the saved fixtures above. The live path is an optional proof that one real Bright Data Scraper Studio collector can produce the same collection shape.
+
+Put the Bright Data credentials and your published collector ID in the ignored root `.env` file:
+
+```dotenv
+BRIGHTDATA_API_KEY=your-api-token
+BRIGHTDATA_COLLECTOR_ID=c_your-published-collector
+```
+
+Then run the live path explicitly:
+
+```bash
+npm run build
+node dist/src/cli.js collect \
+  --live \
+  --vendor Slack \
+  --output /tmp/blast-radius-demo/live-vendor-notice.json
+node dist/src/cli.js scan fixtures/repository \
+  --collection /tmp/blast-radius-demo/live-vendor-notice.json \
+  --output /tmp/blast-radius-demo/live-scan-result.json
+node dist/src/cli.js report \
+  --scan /tmp/blast-radius-demo/live-scan-result.json \
+  --output /tmp/blast-radius-demo/live-impact-report.html
+```
+
+The adapter sends Bright Data only the selected curated public vendor URL. It validates the returned evidence before it can become a `CapabilityChange`. Repository source, local paths, snippets, symbols, `CodeMatch` records, and scan artifacts stay on the local machine. Run `npm run test:brightdata` for the narrow live contract check; it is skipped unless both values are configured. See [docs/brightdata-collection.md](docs/brightdata-collection.md) for the collector output details.
 
 If the scanner sees code it cannot prove, the scan still succeeds. It records the relative file path, line number, and a plain-English reason under `Analysis Limitations`. Those locations are not counted as proven matches. A repository with only unresolved usage has no Impact, but the limitation remains visible in the scan output and saved JSON file.
 

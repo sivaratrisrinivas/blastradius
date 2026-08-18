@@ -82,6 +82,32 @@ test("Bright Data collection returns the fixture-compatible artifact and feeds t
   assert.doesNotMatch(JSON.stringify(calls), /src\/slack-upload\.ts|CodeMatch|scan-result|repository/i);
 });
 
+test("Bright Data date-time output and punctuation spacing still pass the evidence gates", async () => {
+  const responses = [
+    response(JSON.stringify({ collection_id: "j_public-notice" })),
+    response(JSON.stringify([{
+      vendor: "Slack",
+      sourceUrl: slackSourceUrl,
+      retrievedAt: "2026-08-19T00:00:00.000Z",
+      content: "The original web API method for uploading files to Slack, files.upload, is being sunset on November 12, 2025.",
+      excerpt: "The original web API method for uploading files to Slack, files.upload , is being sunset on November 12, 2025 .",
+      capabilityIdentifier: "slack.files.upload",
+      changeType: "shutdown",
+      deadlineOriginal: "November 12, 2025",
+      deadlineIso: "2025-11-12T00:00:00.000Z"
+    }]))
+  ];
+  const artifact = await collectBrightDataVendorNotice(
+    { vendor: "Slack", sourceUrl: slackSourceUrl },
+    brightDataConfig,
+    async () => responses.shift() ?? response("[]"),
+    async () => {}
+  );
+
+  assert.equal(artifact.collection?.deadlineIso, "2025-11-12");
+  assert.equal(artifact.notice.excerpt, "The original web API method for uploading files to Slack, files.upload , is being sunset on November 12, 2025 .");
+});
+
 test("deterministic fixtures use the same collection metadata boundary", () => {
   const artifact = collectVendorNotice(slackFixture);
 
