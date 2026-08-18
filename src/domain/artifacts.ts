@@ -1,8 +1,13 @@
 import { evaluateCapabilityChangeCandidate, explicitDeadlineIso } from "./assertions.js";
+import { capabilityForIdentifier, capabilityForSourceUrl, type Vendor } from "./capabilities.js";
 
 export const ARTIFACT_SCHEMA_VERSION = 1 as const;
 export const SLACK_VENDOR_NOTICE_SOURCE_URL = "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/";
 export const SLACK_VENDOR_NOTICE_EXCERPT = "The files.upload method stopped functioning on November 12, 2025.";
+export const OPENAI_VENDOR_NOTICE_SOURCE_URL = "https://developers.openai.com/api/docs/assistants/migration";
+export const OPENAI_VENDOR_NOTICE_EXCERPT = "After achieving feature parity in the Responses API, we've deprecated the Assistants API. It will shut down on August 26, 2026.";
+export const CLOUDFLARE_VENDOR_NOTICE_SOURCE_URL = "https://developers.cloudflare.com/changelog/post/2026-07-15-kv-legacy-namespace-routes-deprecation/";
+export const CLOUDFLARE_VENDOR_NOTICE_EXCERPT = "The legacy Workers KV API routes under /accounts/{account_id}/workers/namespaces/* are deprecated as of July 15, 2026, and will stop working on October 15, 2026.";
 
 export type JsonPrimitive = boolean | null | number | string;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
@@ -13,15 +18,15 @@ export interface JsonObject {
 export type ChangeType = "deprecation" | "sunset" | "shutdown" | "removal";
 
 export interface VendorNotice {
-  vendor: "Slack";
+  vendor: Vendor;
   sourceUrl: string;
   retrievedAt: string;
   excerpt: string;
 }
 
 export interface CapabilityChange {
-  vendor: "Slack";
-  canonicalIdentifier: "slack.files.upload";
+  vendor: Vendor;
+  canonicalIdentifier: string;
   changeType: ChangeType;
   deadlineOriginal: string;
   deadlineIso: string | null;
@@ -39,8 +44,8 @@ export type MatchContext = "source" | "test" | "example";
 export type DeadlineStatus = "upcoming" | "past" | "date-not-stated";
 
 export interface CodeMatch {
-  vendor: "Slack";
-  capabilityIdentifier: "slack.files.upload";
+  vendor: Vendor;
+  capabilityIdentifier: string;
   file: string;
   line: number;
   evidenceStrength: EvidenceStrength;
@@ -123,20 +128,26 @@ export function isExactDate(value: string): boolean {
 
 function parseNotice(value: JsonValue): VendorNotice {
   if (!isRecord(value)) throw new Error("notice must be an object");
-  if (value.vendor !== "Slack") throw new Error("notice.vendor must be Slack");
+  const vendorValue = asString(value.vendor, "notice.vendor");
   const sourceUrl = asString(value.sourceUrl, "notice.sourceUrl");
-  if (sourceUrl !== SLACK_VENDOR_NOTICE_SOURCE_URL) throw new Error("notice.sourceUrl is not the curated Slack source");
+  const capability = capabilityForSourceUrl(sourceUrl);
+  if (!capability || capability.vendor !== vendorValue) throw new Error(`notice.sourceUrl is not the curated ${vendorValue} source`);
+  const vendor = capability.vendor;
   const retrievedAt = asString(value.retrievedAt, "notice.retrievedAt");
   if (Number.isNaN(Date.parse(retrievedAt))) throw new Error("notice.retrievedAt must be an ISO timestamp");
   const excerpt = asString(value.excerpt, "notice.excerpt");
-  return { vendor: "Slack", sourceUrl, retrievedAt, excerpt };
+  return { vendor, sourceUrl, retrievedAt, excerpt };
 }
 
-function parseCapabilityChange(value: JsonValue): CapabilityChange {
+function parseCapabilityChange(value: JsonValue, notice?: VendorNotice): CapabilityChange {
   if (!isRecord(value)) throw new Error("capabilityChange must be an object");
-  if (value.vendor !== "Slack") throw new Error("capabilityChange.vendor must be Slack");
-  if (value.canonicalIdentifier !== "slack.files.upload") {
-    throw new Error("capabilityChange.canonicalIdentifier must be slack.files.upload");
+  const vendorValue = asString(value.vendor, "capabilityChange.vendor");
+  const canonicalIdentifier = asString(value.canonicalIdentifier, "capabilityChange.canonicalIdentifier");
+  const capability = capabilityForIdentifier(canonicalIdentifier, vendorValue);
+  if (!capability) throw new Error("capabilityChange does not name a curated capability");
+  const vendor = capability.vendor;
+  if (notice && (notice.vendor !== vendor || notice.sourceUrl !== capability.sourceUrl)) {
+    throw new Error("capabilityChange provenance does not match the VendorNotice");
   }
   const changeTypeValue = asString(value.changeType, "capabilityChange.changeType");
   if (!isChangeType(changeTypeValue)) throw new Error("capabilityChange.changeType is not allowed");
@@ -149,7 +160,7 @@ function parseCapabilityChange(value: JsonValue): CapabilityChange {
       : "capabilityChange.deadlineIso must match an exact deadline wording");
   }
   if (deadlineIso !== null && !isExactDate(deadlineIso)) throw new Error("capabilityChange.deadlineIso must be a valid exact date");
-  return { vendor: "Slack", canonicalIdentifier: "slack.files.upload", changeType: changeTypeValue, deadlineOriginal, deadlineIso };
+  return { vendor, canonicalIdentifier, changeType: changeTypeValue, deadlineOriginal, deadlineIso };
 }
 
 function assertCapabilityChangeGates(notice: VendorNotice, capabilityChange: CapabilityChange): void {
@@ -168,10 +179,15 @@ function assertCapabilityChangeGates(notice: VendorNotice, capabilityChange: Cap
   }
 }
 
-function parseCodeMatch(value: JsonValue): CodeMatch {
+function parseCodeMatch(value: JsonValue, expectedChange?: CapabilityChange): CodeMatch {
   if (!isRecord(value)) throw new Error("codeMatch must be an object");
-  if (value.vendor !== "Slack" || value.capabilityIdentifier !== "slack.files.upload") {
-    throw new Error("codeMatch provenance does not match Slack files.upload");
+  const vendorValue = asString(value.vendor, "codeMatch.vendor");
+  const capabilityIdentifier = asString(value.capabilityIdentifier, "codeMatch.capabilityIdentifier");
+  const capability = capabilityForIdentifier(capabilityIdentifier, vendorValue);
+  if (!capability) throw new Error("codeMatch provenance does not match a curated capability");
+  const vendor = capability.vendor;
+  if (expectedChange && (expectedChange.vendor !== vendor || expectedChange.canonicalIdentifier !== capabilityIdentifier)) {
+    throw new Error("codeMatch provenance does not match the CapabilityChange");
   }
   const file = asString(value.file, "codeMatch.file");
   if (file.startsWith("/") || file.startsWith("\\") || file.split(/[\\/]/).includes("..")) {
@@ -182,7 +198,7 @@ function parseCodeMatch(value: JsonValue): CodeMatch {
   if (!isEvidenceStrength(evidenceStrengthValue)) throw new Error("codeMatch.evidenceStrength is not allowed");
   const contextValue = asString(value.context, "codeMatch.context");
   if (!isMatchContext(contextValue)) throw new Error("codeMatch.context is not allowed");
-  return { vendor: "Slack", capabilityIdentifier: "slack.files.upload", file, line, evidenceStrength: evidenceStrengthValue, context: contextValue, evidence: asString(value.evidence, "codeMatch.evidence") };
+  return { vendor, capabilityIdentifier, file, line, evidenceStrength: evidenceStrengthValue, context: contextValue, evidence: asString(value.evidence, "codeMatch.evidence") };
 }
 
 function parseLimitation(value: JsonValue): AnalysisLimitation {
@@ -198,7 +214,7 @@ export function assertVendorNoticeArtifact(value: JsonValue): VendorNoticeArtifa
     throw new Error("vendor-notice artifact is missing notice or capabilityChange");
   }
   const notice = parseNotice(value.notice);
-  const capabilityChange = parseCapabilityChange(value.capabilityChange);
+  const capabilityChange = parseCapabilityChange(value.capabilityChange, notice);
   assertCapabilityChangeGates(notice, capabilityChange);
   return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "vendor-notice", notice, capabilityChange };
 }
@@ -211,17 +227,17 @@ export function assertScanArtifact(value: JsonValue): ScanArtifact {
     throw new Error("scan-result artifact is missing required fields");
   }
   const notice = parseNotice(value.notice);
-  const capabilityChange = parseCapabilityChange(value.capabilityChange);
+  const capabilityChange = parseCapabilityChange(value.capabilityChange, notice);
   assertCapabilityChangeGates(notice, capabilityChange);
-  const codeMatches = value.codeMatches.map(parseCodeMatch);
+  const codeMatches = value.codeMatches.map(codeMatch => parseCodeMatch(codeMatch, capabilityChange));
   const limitations = value.limitations.map(parseLimitation);
   if (codeMatches.length > 0 && value.impact === null) throw new Error("scan-result with proven CodeMatches must contain an Impact");
   if (codeMatches.length === 0 && value.impact !== null) throw new Error("scan-result without a proven CodeMatch cannot contain an Impact");
   let impact: Impact | null = null;
   if (value.impact !== null) {
     if (!isRecord(value.impact) || !Array.isArray(value.impact.codeMatches)) throw new Error("scan-result impact is malformed");
-    const impactChange = parseCapabilityChange(value.impact.capabilityChange);
-    const impactMatches = value.impact.codeMatches.map(parseCodeMatch);
+    const impactChange = parseCapabilityChange(value.impact.capabilityChange, notice);
+    const impactMatches = value.impact.codeMatches.map(codeMatch => parseCodeMatch(codeMatch, impactChange));
     if (JSON.stringify(impactChange) !== JSON.stringify(capabilityChange) || JSON.stringify(impactMatches) !== JSON.stringify(codeMatches)) {
       throw new Error("Impact does not exactly match the proven scan result");
     }

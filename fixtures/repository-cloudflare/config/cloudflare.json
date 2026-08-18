@@ -1,0 +1,7 @@
+{
+  "cloudflare": {
+    "kv": {
+      "namespaceEndpoint": "https://api.cloudflare.com/client/v4/accounts/abc123/workers/namespaces/ns123/values/key"
+    }
+  }
+}

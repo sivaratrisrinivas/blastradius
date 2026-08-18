@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { collectSlackNotice } from "./collection/collect.js";
+import { collectVendorNotice } from "./collection/collect.js";
 import { assertVendorNoticeArtifact, parseJson, type JsonValue, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
 import { renderImpactReport } from "./report/render.js";
 import { scanLocalRepository } from "./scan/scan.js";
@@ -30,10 +30,10 @@ function readJson(path: string): JsonValue {
 function run(args: string[]): void {
   const command = args[0];
   if (command === "collect") {
-    const artifact = collectSlackNotice(option(args, "--fixture"));
+    const artifact = collectVendorNotice(option(args, "--fixture"));
     writeJson(option(args, "--output"), artifact);
     process.stdout.write([
-      `Verified Slack VendorNotice and stored ${artifact.capabilityChange.canonicalIdentifier}.`,
+      `Verified ${artifact.notice.vendor} VendorNotice and stored ${artifact.capabilityChange.canonicalIdentifier}.`,
       `Source: ${artifact.notice.sourceUrl}`,
       `Evidence: ${artifact.notice.excerpt}`,
       `Deadline: ${artifact.capabilityChange.deadlineOriginal} (${artifact.capabilityChange.deadlineIso ?? "not stated"})`
@@ -61,7 +61,7 @@ function run(args: string[]): void {
         ...result.limitations.map(limitation => `- ${limitation.file}:${limitation.line}: ${limitation.reason}`)
       ].join("\n");
     process.stdout.write([
-      `Scanned local repository: ${result.codeMatches.length} proven CodeMatch; ${result.limitations.length} unresolved usage(s).`,
+      `Scanned local repository: ${result.codeMatches.length} proven CodeMatch${result.codeMatches.length > 1 ? "es" : ""}; ${result.limitations.length} unresolved usage(s).`,
       provenDetails,
       limitationDetails,
       "Privacy: Repository analysis stayed local; source, paths, snippets, and scan artifacts were not sent externally."

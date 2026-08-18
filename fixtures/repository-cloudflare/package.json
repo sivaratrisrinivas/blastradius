@@ -1,0 +1,5 @@
+{
+  "name": "cloudflare-kv-fixture",
+  "private": true,
+  "type": "module"
+}

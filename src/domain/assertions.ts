@@ -1,3 +1,5 @@
+import { capabilityForSourceUrl, type CuratedCapability } from "./capabilities.js";
+
 export interface CapabilityChangeCandidate {
   vendor: string;
   sourceUrl: string;
@@ -21,20 +23,6 @@ export interface CandidateAssertionResult {
   accepted: boolean;
   failures: AssertionFailure[];
 }
-
-interface CuratedCapability {
-  vendor: string;
-  canonicalIdentifier: string;
-  evidenceIdentifier: string;
-}
-
-const CURATED_CAPABILITIES = new Map<string, CuratedCapability>([
-  ["https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/", {
-    vendor: "Slack",
-    canonicalIdentifier: "slack.files.upload",
-    evidenceIdentifier: "files.upload"
-  }]
-]);
 
 const ALLOWED_CHANGE_TYPES = new Set(["deprecation", "sunset", "shutdown", "removal"]);
 const LIFECYCLE_LANGUAGE = "(?:deprecat(?:e|ed|es|ing|ion)|sunset(?:s|ting|ted)?|shutdown|shut\\s+down|stop(?:s|ped)?\\s+(?:functioning|working)|cease(?:s|d)?\\s+(?:functioning|working)|remov(?:e|ed|es|ing|al))";
@@ -75,11 +63,25 @@ export function explicitDeadlineIso(value: string): string | null {
   return dates.length === 1 ? dates[0] : null;
 }
 
-function hasRelatedLifecycleEvidence(value: string, evidenceIdentifier: string): boolean {
+function containsExplicitDate(value: string, isoDate: string): boolean {
+  if (value.includes(isoDate)) return true;
+  const date = new Date(`${isoDate}T00:00:00.000Z`);
+  if (Number.isNaN(date.valueOf())) return false;
+  return value.includes(`${MONTH_NAMES[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`);
+}
+
+function hasRelatedLifecycleEvidence(value: string, capability: CuratedCapability): boolean {
   const sentences = value.trim().split(/(?<=[.!?])\s+/);
-  const escapedIdentifier = evidenceIdentifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const relatedLifecycle = new RegExp(`${escapedIdentifier}(?:\\s+${LIFECYCLE_BRIDGE_WORDS}){0,5}\\s+${LIFECYCLE_LANGUAGE}`, "i");
-  return sentences.length === 1 && sentences.some(sentence => relatedLifecycle.test(sentence));
+  const escapedIdentifier = capability.evidenceIdentifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const relatedLifecycle = capability.matcher === "cloudflare-kv-legacy-routes"
+    ? new RegExp(`${escapedIdentifier}[^.!?]{0,220}\\s+${LIFECYCLE_LANGUAGE}`, "i")
+    : new RegExp(`${escapedIdentifier}(?:\\s+${LIFECYCLE_BRIDGE_WORDS}){0,5}\\s+${LIFECYCLE_LANGUAGE}`, "i");
+  return sentences.some((sentence, index) => {
+    if (relatedLifecycle.test(sentence)) return true;
+    const nextSentence = sentences[index + 1];
+    return sentence.includes(capability.evidenceIdentifier) && nextSentence !== undefined &&
+      /^(?:it|this|the api)\b[\s\S]*\b(?:deprecat|sunset|shutdown|shut\s+down|remov)/i.test(nextSentence.trim());
+  });
 }
 
 function addFailure(failures: AssertionFailure[], gate: AssertionGate, message: string): void {
@@ -88,7 +90,7 @@ function addFailure(failures: AssertionFailure[], gate: AssertionGate, message: 
 
 export function evaluateCapabilityChangeCandidate(candidate: CapabilityChangeCandidate): CandidateAssertionResult {
   const failures: AssertionFailure[] = [];
-  const curatedCapability = CURATED_CAPABILITIES.get(candidate.sourceUrl);
+  const curatedCapability = capabilityForSourceUrl(candidate.sourceUrl);
 
   if (!curatedCapability || candidate.vendor !== curatedCapability.vendor) {
     addFailure(failures, "provenance", "source URL and vendor are not in the curated first-party allowlist");
@@ -96,11 +98,11 @@ export function evaluateCapabilityChangeCandidate(candidate: CapabilityChangeCan
     addFailure(failures, "provenance", "retrievedAt is not a valid timestamp");
   }
 
-  if (curatedCapability && !hasRelatedLifecycleEvidence(candidate.excerpt, curatedCapability.evidenceIdentifier)) {
+  if (curatedCapability && !hasRelatedLifecycleEvidence(candidate.excerpt, curatedCapability)) {
     addFailure(failures, "lifecycle-language", "supporting excerpt does not tie explicit lifecycle language to the named capability");
   }
 
-  if (curatedCapability && candidate.capabilityIdentifier !== curatedCapability.canonicalIdentifier) {
+  if (curatedCapability && !curatedCapability.acceptedIdentifiers.includes(candidate.capabilityIdentifier)) {
     addFailure(failures, "capability-identity", "candidate does not name the curated capability identifier");
   }
 
@@ -116,14 +118,17 @@ export function evaluateCapabilityChangeCandidate(candidate: CapabilityChangeCan
   }
 
   const deadlineFromOriginal = explicitDeadlineIso(candidate.deadlineOriginal);
-  const deadlineFromEvidence = explicitDeadlineIso(candidate.excerpt);
   if (deadlineFromOriginal !== candidate.deadlineIso) {
     addFailure(failures, "deadline", deadlineFromOriginal === null
       ? "deadlineIso must be null when the original wording is partial, relative, ambiguous, or ranged"
       : `deadlineIso must retain the explicit full date ${deadlineFromOriginal}`);
   }
-  if (deadlineFromEvidence !== candidate.deadlineIso) {
-    addFailure(failures, "deadline", "deadlineIso does not match the unambiguous date in the supporting evidence");
+  if (candidate.deadlineIso === null) {
+    if (explicitDeadlineIso(candidate.excerpt) !== null) {
+      addFailure(failures, "deadline", "deadlineIso does not match the unambiguous date in the supporting evidence");
+    }
+  } else if (!containsExplicitDate(candidate.excerpt, candidate.deadlineIso)) {
+    addFailure(failures, "deadline", "deadlineIso does not match an explicit date in the supporting evidence");
   }
 
   return { candidate, accepted: failures.length === 0, failures };

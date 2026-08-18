@@ -1,0 +1,10 @@
+{
+  "vendor": "OpenAI",
+  "sourceUrl": "https://developers.openai.com/api/docs/assistants/migration",
+  "retrievedAt": "2026-08-18T00:00:00Z",
+  "excerpt": "After achieving feature parity in the Responses API, we've deprecated the Assistants API. It will shut down on August 26, 2026.",
+  "capabilityIdentifier": "openai.assistants",
+  "changeType": "shutdown",
+  "deadlineOriginal": "August 26, 2026",
+  "deadlineIso": "2026-08-26"
+}

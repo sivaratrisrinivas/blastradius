@@ -10,8 +10,9 @@ import {
   type VendorNoticeArtifact
 } from "../domain/artifacts.js";
 import { evaluateCapabilityChangeCandidate, type CapabilityChangeCandidate } from "../domain/assertions.js";
+import { capabilityForSourceUrl } from "../domain/capabilities.js";
 
-export function collectSlackNotice(fixturePath: string): VendorNoticeArtifact {
+export function collectVendorNotice(fixturePath: string): VendorNoticeArtifact {
   let fixture: JsonValue;
   try {
     fixture = parseJson(readFileSync(fixturePath, "utf8"));
@@ -40,25 +41,46 @@ export function collectSlackNotice(fixturePath: string): VendorNoticeArtifact {
   };
   const assertion = evaluateCapabilityChangeCandidate(candidate);
 
+  const capability = capabilityForSourceUrl(sourceUrl);
   if (assertion.failures.some(failure => failure.gate === "provenance")) {
-    throw new Error("collection fixture is not an allowed first-party Slack source");
+    throw new Error(`collection fixture is not an allowed first-party ${vendor} source`);
   }
   if (!assertion.accepted) {
     throw new Error(`collection candidate failed assertion gates: ${assertion.failures.map(failure => `${failure.gate}: ${failure.message}`).join("; ")}`);
   }
   if (!isChangeType(changeType)) throw new Error("collection candidate has an unsupported change type");
-  if (vendor !== "Slack" || capabilityIdentifier !== "slack.files.upload") throw new Error("collection candidate is not the supported Slack capability");
+  if (!capability || capability.vendor !== vendor || !capability.acceptedIdentifiers.includes(capabilityIdentifier)) {
+    throw new Error(`collection candidate is not the supported ${vendor} capability`);
+  }
 
   return assertVendorNoticeArtifact({
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
     kind: "vendor-notice",
-    notice: { vendor: "Slack", sourceUrl, retrievedAt, excerpt },
+    notice: { vendor: capability.vendor, sourceUrl, retrievedAt, excerpt },
     capabilityChange: {
-      vendor: "Slack",
-      canonicalIdentifier: "slack.files.upload",
+      vendor: capability.vendor,
+      canonicalIdentifier: capabilityIdentifier,
       changeType,
       deadlineOriginal,
       deadlineIso
     }
   });
+}
+
+export function collectSlackNotice(fixturePath: string): VendorNoticeArtifact {
+  const artifact = collectVendorNotice(fixturePath);
+  if (artifact.notice.vendor !== "Slack") throw new Error("collection fixture is not a Slack notice");
+  return artifact;
+}
+
+export function collectOpenAINotice(fixturePath: string): VendorNoticeArtifact {
+  const artifact = collectVendorNotice(fixturePath);
+  if (artifact.notice.vendor !== "OpenAI") throw new Error("collection fixture is not an OpenAI notice");
+  return artifact;
+}
+
+export function collectCloudflareNotice(fixturePath: string): VendorNoticeArtifact {
+  const artifact = collectVendorNotice(fixturePath);
+  if (artifact.notice.vendor !== "Cloudflare") throw new Error("collection fixture is not a Cloudflare notice");
+  return artifact;
 }

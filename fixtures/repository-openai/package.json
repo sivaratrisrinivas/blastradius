@@ -1,0 +1,5 @@
+{
+  "name": "openai-assistants-fixture",
+  "private": true,
+  "type": "module"
+}

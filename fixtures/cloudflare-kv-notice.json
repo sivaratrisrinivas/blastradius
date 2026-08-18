@@ -1,0 +1,10 @@
+{
+  "vendor": "Cloudflare",
+  "sourceUrl": "https://developers.cloudflare.com/changelog/post/2026-07-15-kv-legacy-namespace-routes-deprecation/",
+  "retrievedAt": "2026-08-18T00:00:00Z",
+  "excerpt": "The legacy Workers KV API routes under /accounts/{account_id}/workers/namespaces/* are deprecated as of July 15, 2026, and will stop working on October 15, 2026.",
+  "capabilityIdentifier": "cloudflare.workers.kv.legacy-namespace-routes",
+  "changeType": "deprecation",
+  "deadlineOriginal": "October 15, 2026",
+  "deadlineIso": "2026-10-15"
+}
