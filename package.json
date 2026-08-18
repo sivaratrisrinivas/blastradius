@@ -10,7 +10,8 @@
     "build": "tsc -p tsconfig.json",
     "lint": "oxlint src test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "npm run build && node --test dist/test/issue-2.acceptance.test.js dist/test/issue-3.acceptance.test.js dist/test/issue-4.acceptance.test.js dist/test/issue-5.acceptance.test.js dist/test/issue-5.rules.test.js dist/test/issue-6.acceptance.test.js dist/test/issue-7.acceptance.test.js dist/test/issue-8.acceptance.test.js"
+    "test": "npm run build && node --test dist/test/issue-2.acceptance.test.js dist/test/issue-3.acceptance.test.js dist/test/issue-4.acceptance.test.js dist/test/issue-5.acceptance.test.js dist/test/issue-5.rules.test.js dist/test/issue-6.acceptance.test.js dist/test/issue-7.acceptance.test.js dist/test/issue-8.acceptance.test.js dist/test/issue-8.browser.test.js",
+    "test:browser": "npm run build && node --test dist/test/issue-8.browser.test.js"
   },
   "dependencies": {
     "typescript": "^5.9.2"
@@ -18,6 +19,7 @@
   "devDependencies": {
     "@oxlint/plugins": "^1.78.0",
     "@types/node": "^24.3.0",
-    "oxlint": "^1.78.0"
+    "oxlint": "^1.78.0",
+    "playwright": "^1.62.1"
   }
 }

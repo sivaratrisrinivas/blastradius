@@ -76,7 +76,7 @@ class FakeElement {
     toggle: (_name: string, _force?: boolean): void => undefined
   };
   private readonly attributes = new Map<string, string>();
-  private readonly listeners = new Map<string, () => void>();
+  private readonly listeners = new Map<string, (event?: { preventDefault(): void }) => void>();
 
   public constructor(
     public readonly dataset: Record<string, string> = {},
@@ -99,12 +99,12 @@ class FakeElement {
     this.attributes.delete(name);
   }
 
-  public addEventListener(name: string, listener: () => void): void {
+  public addEventListener(name: string, listener: (event?: { preventDefault(): void }) => void): void {
     this.listeners.set(name, listener);
   }
 
   public click(): void {
-    this.listeners.get("click")?.();
+    this.listeners.get("click")?.({ preventDefault: () => undefined });
   }
 
   public focus(): void {

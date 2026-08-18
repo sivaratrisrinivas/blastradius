@@ -139,7 +139,8 @@ function workflowScript(): string {
         }, transitionDelay);
       }));
 
-      document.querySelector(".skip-link")?.addEventListener("click", () => {
+      document.querySelector(".skip-link")?.addEventListener("click", event => {
+        event.preventDefault();
         document.querySelector("[data-screen]:not([hidden]) h1")?.focus();
       });
 
