@@ -58,23 +58,25 @@ No workspace support, runtime-reachability claims, severity scoring, CI policy, 
 
 An Impact is `upcoming`, `past`, or `date-not-stated`. The original wording is always retained. The MVP supports `deadline_iso` only when a source gives an exact full date; it does not invent day, month, year, or range precision.
 
-## Collector drift and repair
+## Collector drift and healing
 
 The integrity layer detects only zero results, required-field collapse, and schema failure. It does not claim to catch every wrong-but-well-shaped extraction.
 
 When detected drift occurs, the demo follows:
 
 ```text
-detect -> diagnose -> propose repair -> validate -> human approval -> activate
+detect -> compose prompt -> heal -> await approval -> approve or reject -> rerun
 ```
 
-The main product is notice-to-code impact analysis. Collector repair is the trust layer underneath it.
+The heal itself is Bright Data's: Blast Radius composes a prompt from the detected signal, calls the vendor's self-healing endpoint, and stops at its approval gate. Bright Data's own `request_fulfillment_validator` step replaces the local validation stage that this contract previously described.
+
+The main product is notice-to-code impact analysis. CollectorHeal is the trust layer underneath it.
 
 ## Prototype pass condition
 
 The prototype passes only when:
 
 1. One real custom Scraper Studio collector takes an official VendorNotice through extraction, assertion gates, one exact local CodeMatch, and a local report.
-2. One controlled collector failure completes the repair workflow through human approval and a healthy rerun.
+2. One controlled collector failure completes the CollectorHeal workflow through human approval and a healthy rerun.
 
 The main demonstration uses a small, believable fixture repository and deterministic stored collection data after a brief real Scraper Studio run.

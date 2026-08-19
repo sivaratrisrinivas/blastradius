@@ -41,13 +41,18 @@ function fixtureMetadata(value: JsonValue): FixtureMetadata {
   return metadata;
 }
 
-function fixtureHealthError(value: JsonValue, signal: "zero-results" | "required-field-collapse" | "schema-failure", message: string): never {
+function fixtureHealthError(
+  value: JsonValue,
+  signal: "zero-results" | "required-field-collapse" | "schema-failure",
+  message: string,
+  fields: readonly string[] = []
+): never {
   const metadata = fixtureMetadata(value);
-  throw collectorHealthError(metadata.collector, signal, message, metadata.vendor, metadata.sourceUrl);
+  throw collectorHealthError(metadata.collector, signal, message, fields, metadata.vendor, metadata.sourceUrl);
 }
 
 function assertFixtureRequiredFields(value: JsonObject): void {
-  const requiredFields = ["vendor", "sourceUrl", "retrievedAt", "content", "excerpt", "deadlineOriginal"] as const;
+  const requiredFields = ["vendor", "sourceUrl", "retrievedAt", "content", "excerpt", "capabilityIdentifier", "changeType", "deadlineOriginal"] as const;
   const collapsed = requiredFields.filter(field => {
     const fieldValue = value[field];
     return fieldValue === undefined || fieldValue === null || (isStringValue(fieldValue) && fieldValue.trim() === "");
@@ -56,10 +61,10 @@ function assertFixtureRequiredFields(value: JsonObject): void {
     const fieldValue = value[field];
     return fieldValue !== undefined && fieldValue !== null && !isStringValue(fieldValue);
   });
-  if (collapsed.length > 0) fixtureHealthError(value, "required-field-collapse", `Required collection field(s) were missing or empty: ${collapsed.join(", ")}.`);
-  if (malformed.length > 0) fixtureHealthError(value, "schema-failure", `Required collection field(s) had an unsupported shape: ${malformed.join(", ")}.`);
-  if (value.deadlineIso === undefined || value.deadlineIso === "") fixtureHealthError(value, "required-field-collapse", "Required collection field(s) were missing or empty: deadlineIso.");
-  if (value.deadlineIso !== null && value.deadlineIso !== undefined && !isStringValue(value.deadlineIso)) fixtureHealthError(value, "schema-failure", "Required collection field(s) had an unsupported shape: deadlineIso.");
+  if (collapsed.length > 0) fixtureHealthError(value, "required-field-collapse", `Required collection field(s) were missing or empty: ${collapsed.join(", ")}.`, collapsed);
+  if (malformed.length > 0) fixtureHealthError(value, "schema-failure", `Required collection field(s) had an unsupported shape: ${malformed.join(", ")}.`, malformed);
+  if (value.deadlineIso === undefined || value.deadlineIso === "") fixtureHealthError(value, "required-field-collapse", "Required collection field(s) were missing or empty: deadlineIso.", ["deadlineIso"]);
+  if (value.deadlineIso !== null && value.deadlineIso !== undefined && !isStringValue(value.deadlineIso)) fixtureHealthError(value, "schema-failure", "Required collection field(s) had an unsupported shape: deadlineIso.", ["deadlineIso"]);
 }
 
 export function collectVendorNotice(fixturePath: string): VendorNoticeArtifact {

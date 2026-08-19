@@ -3,9 +3,10 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { collectBrightDataVendorNotice, brightDataConfigFromEnvironment, loadEnvironmentFile } from "./collection/bright-data.js";
 import { collectVendorNotice } from "./collection/collect.js";
-import { approveCollectorRepair, proposeCollectorRepair, rerunCollectorRepair, validateCollectorRepair } from "./collection/repair.js";
+import { brightDataHealDriver, recordedHealDriver, type CollectorHealDriver } from "./collection/bright-data-heal.js";
+import { detectCollectorHeal, rerunCollectorHeal, resolveCollectorHeal, runCollectorHeal } from "./collection/heal.js";
 import { curatedSourceUrlForVendor, type Vendor } from "./domain/capabilities.js";
-import { assertCollectorHealthArtifact, assertCollectorRepairArtifact, assertVendorNoticeArtifact, HEALTHY_COLLECTOR_HEALTH_MESSAGE, isRecord, parseJson, type CollectorHealthArtifact, type CollectorRepairArtifact, type JsonValue, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
+import { assertCollectorHealArtifact, assertCollectorHealthArtifact, assertVendorNoticeArtifact, collectorLabel, HEAL_PROMPT_MAX_LENGTH, HEALTHY_COLLECTOR_HEALTH_MESSAGE, isRecord, parseJson, type CollectorHealArtifact, type CollectorHealthArtifact, type JsonValue, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
 import { CollectorHealthError } from "./domain/collector-health.js";
 import { renderImpactReport } from "./report/render.js";
 import { scanLocalRepository } from "./scan/scan.js";
@@ -31,7 +32,7 @@ function vendorOption(value: string): Vendor {
   throw new Error(`unsupported vendor ${value}; expected Slack, OpenAI, or Cloudflare`);
 }
 
-function writeJson(path: string, value: CollectorHealthArtifact | CollectorRepairArtifact | VendorNoticeArtifact | ScanArtifact): void {
+function writeJson(path: string, value: CollectorHealArtifact | CollectorHealthArtifact | VendorNoticeArtifact | ScanArtifact): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
@@ -61,12 +62,38 @@ function readVendorNotice(path: string): VendorNoticeArtifact {
   return assertVendorNoticeArtifact(value);
 }
 
-function readCollectorRepair(path: string): CollectorRepairArtifact {
-  return assertCollectorRepairArtifact(readJson(path));
+/**
+ * Bright Data can approve and save a heal without a human. Amendment 1 section 2 keeps those
+ * switches off the product path entirely, so the CLI refuses them rather than ignoring them.
+ */
+function refuseAutomaticApproval(args: string[]): void {
+  for (const flag of ["--auto-approve", "--auto-save"]) {
+    if (args.includes(flag)) throw new Error(`${flag} is not available: a healed template is saved only after an explicit human approval`);
+  }
 }
 
-function collectorLabel(collector: { identity: string; version: string }): string {
-  return `${collector.identity}@${collector.version}`;
+function healDriver(args: string[]): CollectorHealDriver {
+  const recordedPath = optionalOption(args, "--recorded");
+  if (recordedPath !== undefined) return recordedHealDriver(recordedPath);
+  loadEnvironmentFile(resolve(process.cwd(), ".env"));
+  return brightDataHealDriver(brightDataConfigFromEnvironment());
+}
+
+/**
+ * How the post-approval rerun collects. `--live` runs the healed collector for real; otherwise a
+ * stored fixture stands in, which is what the offline suite and the demo use.
+ */
+function healRerunCollection(args: string[], heal: CollectorHealArtifact): () => Promise<VendorNoticeArtifact> {
+  if (!args.includes("--live")) {
+    const fixturePath = option(args, "--fixture");
+    return async () => collectVendorNotice(fixturePath);
+  }
+  const vendor = heal.detected.vendor;
+  const sourceUrl = heal.detected.sourceUrl;
+  if (!vendor || !sourceUrl) throw new Error("a live rerun needs the detected vendor and curated source recorded on the heal");
+  loadEnvironmentFile(resolve(process.cwd(), ".env"));
+  const config = brightDataConfigFromEnvironment();
+  return () => collectBrightDataVendorNotice({ vendor, sourceUrl }, config);
 }
 
 async function run(args: string[]): Promise<void> {
@@ -133,71 +160,67 @@ async function run(args: string[]): Promise<void> {
     return;
   }
   if (command === "report") {
-    const repairPath = optionalOption(args, "--repair");
-    const report = renderImpactReport(readJson(option(args, "--scan")), new Date(), repairPath ? readJson(repairPath) : undefined);
+    const healPath = optionalOption(args, "--heal");
+    const report = renderImpactReport(readJson(option(args, "--scan")), new Date(), healPath ? readJson(healPath) : undefined);
     const outputPath = option(args, "--output");
     mkdirSync(dirname(outputPath), { recursive: true });
     writeFileSync(outputPath, report, "utf8");
     process.stdout.write(`Generated local Impact Report at ${outputPath}. Confirmed Impact: ${report.includes("Confirmed Impact") ? "yes" : "no"}. Privacy: repository analysis stayed local.\n`);
     return;
   }
-  if (command === "repair") {
-    const action = args[1] && !args[1].startsWith("--")
-      ? args[1]
-      : args.includes("--approve") ? "approve" : args.includes("--validate") ? "validate" : args.includes("--rerun") ? "rerun" : "diagnose";
+  if (command === "heal") {
+    refuseAutomaticApproval(args);
+    const action = args[1] && !args[1].startsWith("--") ? args[1] : "detect";
     const outputPath = option(args, "--output");
-    if (action === "diagnose") {
-      const proposal = proposeCollectorRepair(readJson(option(args, "--diagnostic")), optionalOption(args, "--proposed-version"));
-      writeJson(outputPath, proposal);
+    if (action === "detect") {
+      const lastKnownGoodPath = optionalOption(args, "--last-known-good");
+      const heal = detectCollectorHeal(
+        readJson(option(args, "--diagnostic")),
+        lastKnownGoodPath === undefined ? undefined : readJson(lastKnownGoodPath)
+      );
+      writeJson(outputPath, heal);
       process.stdout.write([
-        `CollectorHealth ${proposal.detected.collectorHealth.signal} diagnosed for ${collectorLabel(proposal.activeCollector)}.`,
-        `Proposed collector: ${collectorLabel(proposal.proposedCollector)}.`,
-        `Diagnosis: ${proposal.diagnosis}`,
-        proposal.activation.message,
-        "Validation has not run; approval cannot be requested yet."
+        `CollectorHealth ${heal.detected.signal} detected for ${collectorLabel(heal.collector)}.`,
+        `Diagnosis: ${heal.diagnosis}`,
+        `Composed heal prompt (${heal.prompt.text.length}/${HEAL_PROMPT_MAX_LENGTH} characters): ${heal.prompt.text}`,
+        heal.heal.message
       ].join("\n") + "\n");
       return;
     }
-    if (action === "validate") {
-      const validation = validateCollectorRepair(readJson(option(args, "--proposal")), option(args, "--fixture"));
-      writeJson(outputPath, validation);
-      if (validation.validation.status !== "passed") throw new Error(`collector repair validation failed: ${validation.validation.message}`);
-      process.stdout.write([
-        validation.validation.message,
-        validation.approval.message,
-        `Active collector remains ${collectorLabel(validation.activeCollector)}.`
-      ].join("\n") + "\n");
-      return;
-    }
-    if (action === "approve") {
-      const proposal = readCollectorRepair(option(args, "--proposal"));
+    if (action === "run" || action === "approve" || action === "reject") {
+      const healPath = option(args, "--heal");
+      const stored = readJson(healPath);
+      const driver = healDriver(args);
       try {
-        const activation = approveCollectorRepair(proposal);
-        writeJson(outputPath, activation);
+        const heal = action === "run"
+          ? await runCollectorHeal(stored, driver)
+          : await resolveCollectorHeal(stored, action, driver);
+        writeJson(outputPath, heal);
         process.stdout.write([
-          activation.approval.message,
-          activation.activation.message,
-          "Run a healthy rerun to observe recovery."
+          heal.heal.message,
+          heal.approval.message,
+          action === "run" ? `Heal evidence source: ${heal.heal.source}.` : `Bright Data steps completed: ${heal.heal.completedSteps.join(", ")}.`
         ].join("\n") + "\n");
       } catch (error) {
-        writeJson(outputPath, proposal);
+        writeJson(outputPath, assertCollectorHealArtifact(stored));
         throw error;
       }
       return;
     }
     if (action === "rerun") {
-      const recovered = rerunCollectorRepair(readJson(option(args, "--proposal")), option(args, "--fixture"));
-      writeJson(outputPath, recovered);
-      if (recovered.rerun.status !== "healthy") throw new Error(`collector repair healthy rerun failed: ${recovered.rerun.message}`);
+      const stored = assertCollectorHealArtifact(readJson(option(args, "--heal")));
+      const reran = await rerunCollectorHeal(stored, healRerunCollection(args, stored));
+      writeJson(outputPath, reran);
+      if (reran.rerun.status !== "healthy") throw new Error(`collector heal rerun failed: ${reran.rerun.message}`);
       process.stdout.write([
-        recovered.rerun.message,
-        `Active collector: ${collectorLabel(recovered.activeCollector)}.`
+        reran.rerun.message,
+        `Collector: ${collectorLabel(reran.collector)}.`
       ].join("\n") + "\n");
       return;
     }
-    throw new Error(`unknown repair action ${action}; expected diagnose, validate, approve, or rerun`);
+    throw new Error(`unknown heal action ${action}; expected detect, run, approve, reject, or rerun`);
   }
-  throw new Error(`unknown command ${command ?? ""}; expected collect, scan, report, or repair`);
+  throw new Error(`unknown command ${command ?? ""}; expected collect, scan, report, or heal`);
 }
 
 try {

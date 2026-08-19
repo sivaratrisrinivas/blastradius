@@ -25,6 +25,7 @@ interface HealthDiagnostic {
     signal: string | null;
     collector: { identity: string; version: string };
     checks: Record<string, string>;
+    fields: string[];
   };
 }
 
@@ -73,10 +74,11 @@ test("required-field collapse is stored as drifted CollectorHealth", () => {
   const { result, diagnostic } = readStored(directory, healthFixtures.requiredFieldCollapse);
 
   assert.match(result.stderr, /required-field-collapse/);
-  assert.match(result.stderr, /excerpt/);
+  assert.match(result.stderr, /capabilityIdentifier/);
   assert.equal(diagnostic.collectorHealth.status, "drifted");
   assert.equal(diagnostic.collectorHealth.signal, "required-field-collapse");
   assert.equal(diagnostic.collectorHealth.collector.identity, "deterministic-fixture");
+  assert.deepEqual(diagnostic.collectorHealth.fields, ["capabilityIdentifier"], "the signal names the field so a heal prompt can too");
 });
 
 test("schema failure is stored as drifted CollectorHealth before interpretation", () => {

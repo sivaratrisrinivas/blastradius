@@ -1,0 +1,9 @@
+{
+  "id": "ia_recorded_heal_job",
+  "step": "code_fixer",
+  "completed_steps": [
+    "planner",
+    "control_preview_runner"
+  ],
+  "status": "running"
+}

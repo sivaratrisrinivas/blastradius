@@ -1,11 +1,13 @@
 import {
   assertScanArtifact,
-  assertCollectorRepairArtifact,
+  assertCollectorHealArtifact,
+  type CollectorHealArtifact,
+  type CollectorHealDiff,
   type DeadlineStatus,
   type JsonValue,
-  type CollectorRepairArtifact,
   type ScanArtifact
 } from "../domain/artifacts.js";
+import { changedLinesWithContext, lineDiff } from "./line-diff.js";
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, character => ({
@@ -26,10 +28,12 @@ function displayCapability(identifier: string): string {
   }
 }
 
-function nextCollectorVersion(version: string): string {
-  const numberedVersion = /^(.*-)?v(\d+)$/.exec(version);
-  if (numberedVersion) return `${numberedVersion[1] ?? ""}v${Number(numberedVersion[2]) + 1}`;
-  return `${version}-repair`;
+function parseCodeDiff(diff: CollectorHealDiff): string {
+  const marker = { context: " ", removed: "-", added: "+", elided: "  …" };
+  const rows = changedLinesWithContext(lineDiff(diff.parseCodeBefore, diff.parseCodeAfter), 2)
+    .map(line => `<span class="diff-line" data-diff-line="${line.kind}">${marker[line.kind]} ${escapeHtml(line.text)}</span>`)
+    .join("\n");
+  return `<pre class="diff" data-section="heal-parse-code-diff" aria-label="Proposed change to the collector parse code"><code>${rows}</code></pre>`;
 }
 
 export function deadlineStatus(deadlineIso: string | null, now: Date): DeadlineStatus {
@@ -161,9 +165,9 @@ function workflowScript(): string {
   </script>`;
 }
 
-export function renderImpactReport(value: JsonValue, now = new Date(), repairValue?: JsonValue): string {
+export function renderImpactReport(value: JsonValue, now = new Date(), healValue?: JsonValue): string {
   const scan = assertScanArtifact(value);
-  const repair: CollectorRepairArtifact | undefined = repairValue === undefined ? undefined : assertCollectorRepairArtifact(repairValue);
+  const heal: CollectorHealArtifact | undefined = healValue === undefined ? undefined : assertCollectorHealArtifact(healValue);
   const impact = scan.impact;
   if (!impact || impact.codeMatches.length === 0 || impact.codeMatches.length !== scan.codeMatches.length) {
     throw new Error("cannot generate an Impact Report without a proven CodeMatch");
@@ -172,16 +176,18 @@ export function renderImpactReport(value: JsonValue, now = new Date(), repairVal
   const status = deadlineStatus(scan.capabilityChange.deadlineIso, now);
   const notice = impact.capabilityChange;
   const capability = displayCapability(notice.canonicalIdentifier);
-  const activeCollector = repair?.activation.status === "activated" && repair.activation.previousCollector
-    ? repair.activation.previousCollector
-    : repair?.activeCollector ?? { identity: "stored-collector", version: "not-recorded" };
-  const proposedCollectorVersion = repair?.proposedCollector.version ?? nextCollectorVersion(activeCollector.version);
+  const collector = heal?.collector ?? { identity: "stored-collector", version: "not-recorded" };
   const limitedHealthMessage = "CollectorHealth covers only these three checks: zero-results, required-field-collapse, and schema-failure; passing them does not establish semantic correctness or completeness.";
-  const recoveryValidationPassed = repair?.validation.status === "passed";
-  const recoveryRerunHealthy = repair?.rerun.status === "healthy";
-  const recoveryHeading = repair?.detected.signal === "required-field-collapse"
+  const healApproved = heal?.approval.status === "approved";
+  const healRerunHealthy = heal?.rerun.status === "healthy";
+  // A heal that has not run yet has no proposal to show, so the drift screen is the last one.
+  const healReachedGate = heal?.heal.diff !== undefined && heal?.heal.diff !== null;
+  const healEvidence = heal?.heal.source === "recorded"
+    ? "This before and after is replayed from a recorded Bright Data response, not a live call."
+    : "This before and after is the template Bright Data returned from a live self-healing call.";
+  const driftHeading = heal?.detected.signal === "required-field-collapse"
     ? "The collector lost a required field"
-    : `CollectorHealth ${repair?.detected.signal ?? "failure"} detected`;
+    : `CollectorHealth ${heal?.detected.signal ?? "failure"} detected`;
   const reportTitle = `${notice.vendor} ${capability} Impact`;
   const normalizedDate = notice.deadlineIso === null
     ? `<span>Not stated</span>`
@@ -265,6 +271,12 @@ export function renderImpactReport(value: JsonValue, now = new Date(), repairVal
     .location { display: grid; gap: 8px; padding: 18px 0; border-bottom: 1px solid var(--line); }
     .location-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
     .snippet { overflow-wrap: anywhere; }
+    .diff { max-height: 22rem; padding: 14px 16px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: #fdfbf6; font-size: .78rem; line-height: 1.55; tab-size: 2; }
+    .diff code { display: grid; }
+    .diff-line { display: block; padding: 0 6px; white-space: pre; border-radius: 4px; }
+    .diff-line[data-diff-line="removed"] { color: var(--rose-ink); background: var(--rose); }
+    .diff-line[data-diff-line="added"] { color: var(--accent-strong); background: var(--mint); }
+    .diff-line[data-diff-line="elided"] { color: var(--muted); }
     .match-meta { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0; color: var(--muted); font-size: .8rem; }
     .match-meta div { display: flex; gap: .35rem; }
     .match-meta dt { font-size: .68rem; }
@@ -372,40 +384,48 @@ export function renderImpactReport(value: JsonValue, now = new Date(), repairVal
           <h2 id="report-privacy-heading">Repository analysis stayed local</h2>
           <p>Source, paths, snippets, and scan artifacts were not sent externally. Only public vendor material crossed the collection boundary.</p>
         </section>
-        ${repair ? `<section class="evidence" data-section="collector-recovery" aria-labelledby="collector-recovery-heading">
-          <div class="section-heading"><span class="section-kicker">Optional second act</span><h2 id="collector-recovery-heading">Collector recovery</h2></div>
-          <p class="muted">The Impact Report is complete. This optional trust-layer view follows the stored CollectorHealth diagnosis and repair state; it does not add a fourth action to the core report.</p>
-          <button type="button" data-optional-action data-next="drift" data-busy-label="Showing detected collector drift…" aria-controls="workflow"><span class="button-label">See how collector recovery works</span><span class="button-spinner" aria-hidden="true" hidden></span></button>
+        ${heal ? `<section class="evidence" data-section="collector-healing" aria-labelledby="collector-healing-heading">
+          <div class="section-heading"><span class="section-kicker">Optional second act</span><h2 id="collector-healing-heading">Collector healing</h2></div>
+          <p class="muted">The Impact Report is complete. This optional trust-layer view follows the stored CollectorHealth signal and the CollectorHeal it produced; it does not add a fourth action to the core report.</p>
+          <button type="button" data-optional-action data-next="drift" data-busy-label="Showing detected collector drift…" aria-controls="workflow"><span class="button-label">See how collector healing works</span><span class="button-spinner" aria-hidden="true" hidden></span></button>
         </section>` : ""}
         <p class="fine-print">The report is proof-first: Blast Radius may miss usage it cannot prove, but it never presents unproved usage as an Impact.</p>
       </section>
-      ${repair ? `<section class="screen" data-screen="drift" aria-labelledby="drift-heading" hidden>
-        <h1 id="drift-heading" tabindex="-1">${escapeHtml(recoveryHeading)}</h1>
+      ${heal ? `<section class="screen" data-screen="drift" aria-labelledby="drift-heading" hidden>
+        <h1 id="drift-heading" tabindex="-1">${escapeHtml(driftHeading)}</h1>
         <p class="lead">Blast Radius stopped the affected output instead of publishing incomplete evidence. This optional second act does not change the core Impact Report.</p>
         <section class="evidence limitation-panel" data-section="collector-health-detected" aria-labelledby="collector-health-detected-heading">
-          <div class="section-heading"><span class="section-kicker">CollectorHealth detected</span><h2 id="collector-health-detected-heading">${escapeHtml(repair.detected.signal)}</h2></div>
-          <p>${escapeHtml(repair.diagnosis)} The active collector remains <code>${escapeHtml(activeCollector.identity)}@${escapeHtml(activeCollector.version)}</code>.</p>
+          <div class="section-heading"><span class="section-kicker">CollectorHealth detected</span><h2 id="collector-health-detected-heading">${escapeHtml(heal.detected.signal)}</h2></div>
+          <p>${escapeHtml(heal.diagnosis)} The collector remains <code>${escapeHtml(collector.identity)}@${escapeHtml(collector.version)}</code>; healing moves its template, never its identity.</p>
           <p class="fine-print">${escapeHtml(limitedHealthMessage)}</p>
         </section>
-        <button type="button" data-optional-action data-next="approval" data-busy-label="Validating proposed repair…" aria-controls="workflow"><span class="button-label">Diagnose and validate a repair</span><span class="button-spinner" aria-hidden="true" hidden></span></button>
-      </section>` : ""}
-      ${repair ? `<section class="screen" data-screen="approval" aria-labelledby="approval-heading" hidden>
-        <h1 id="approval-heading" tabindex="-1">${recoveryValidationPassed ? "The proposed repair passed validation" : "The proposed repair is awaiting validation"}</h1>
-        <p class="lead">${recoveryValidationPassed ? "The proposed collector passed the collection contract and all three supported health checks, but validation does not activate it." : "The proposal is stored, but validation has not passed. Run the repair validation command before requesting approval."}</p>
-        <section class="evidence" data-section="collector-repair-validation" aria-labelledby="collector-repair-validation-heading">
-          <div class="section-heading"><span class="section-kicker">${recoveryValidationPassed ? "Approval required" : "Validation required"}</span><h2 id="collector-repair-validation-heading">${recoveryValidationPassed ? "Validation passed" : "Validation not passed"}</h2></div>
-          <p class="quote"><code>${escapeHtml(activeCollector.version)} → ${escapeHtml(proposedCollectorVersion)}</code></p>
-          <p>${escapeHtml(repair.validation.message)} The active collector remains <code>${escapeHtml(activeCollector.identity)}@${escapeHtml(activeCollector.version)}</code> until explicit human approval.</p>
-          <p class="fine-print">${escapeHtml(limitedHealthMessage)}</p>
+        <section class="evidence" data-section="heal-prompt" aria-labelledby="heal-prompt-heading">
+          <div class="section-heading"><span class="section-kicker">Composed from the signal</span><h2 id="heal-prompt-heading">The prompt sent to Bright Data</h2></div>
+          <p class="muted">The prompt is built from the detected signal rather than typed by hand, so it names the field that collapsed and what that field last held.</p>
+          <blockquote class="quote">${escapeHtml(heal.prompt.text)}</blockquote>
         </section>
-        <button type="button" data-optional-action data-next="recovered" data-busy-label="Activating approved repair…" aria-controls="workflow"><span class="button-label">Approve and activate ${escapeHtml(proposedCollectorVersion)}</span><span class="button-spinner" aria-hidden="true" hidden></span></button>
+        ${healReachedGate
+          ? `<button type="button" data-optional-action data-next="approval" data-busy-label="Reading the proposed template…" aria-controls="workflow"><span class="button-label">See what Bright Data proposed</span><span class="button-spinner" aria-hidden="true" hidden></span></button>`
+          : `<p class="fine-print" data-section="heal-not-sent">${escapeHtml(heal.heal.message)} There is nothing to approve until it is.</p>`}
       </section>` : ""}
-      ${repair ? `<section class="screen" data-screen="recovered" aria-labelledby="recovered-heading" hidden>
-        <h1 id="recovered-heading" tabindex="-1">${recoveryRerunHealthy ? "The collector recovered" : "The collector is awaiting a healthy rerun"}</h1>
-        <p class="lead"><code>${escapeHtml(proposedCollectorVersion)}</code> is active only because validation passed and a human approved it.</p>
-        <section class="evidence" data-section="collector-recovery-result" aria-labelledby="collector-recovery-result-heading">
-          <div class="section-heading"><span class="section-kicker">Collector health</span><h2 id="collector-recovery-result-heading">${recoveryRerunHealthy ? "Healthy rerun completed" : "Healthy rerun not completed"}</h2></div>
-          <p>${escapeHtml(repair.rerun.message)} ${escapeHtml(limitedHealthMessage)}</p>
+      ${healReachedGate && heal?.heal.diff ? `<section class="screen" data-screen="approval" aria-labelledby="approval-heading" hidden>
+        <h1 id="approval-heading" tabindex="-1">Bright Data proposed a new parse step</h1>
+        <p class="lead">Bright Data paused at its own approval gate. Nothing is saved until a human decides, and Blast Radius never sends an auto-approve or auto-save flag.</p>
+        <section class="evidence" data-section="collector-heal-diff" aria-labelledby="collector-heal-diff-heading">
+          <div class="section-heading"><span class="section-kicker">Awaiting a human</span><h2 id="collector-heal-diff-heading">Proposed change to <code>parse_code</code></h2></div>
+          <p class="muted">${escapeHtml(healEvidence)}</p>
+          ${parseCodeDiff(heal.heal.diff)}
+          <p>${escapeHtml(heal.heal.message)}</p>
+          <p class="fine-print">Completed steps: ${escapeHtml(heal.heal.completedSteps.join(", "))}.</p>
+        </section>
+        <button type="button" data-optional-action data-next="healed" data-busy-label="Recording the human decision…" aria-controls="workflow"><span class="button-label">${healApproved ? "Approve the proposed template" : "See the recorded decision"}</span><span class="button-spinner" aria-hidden="true" hidden></span></button>
+      </section>` : ""}
+      ${healReachedGate ? `<section class="screen" data-screen="healed" aria-labelledby="healed-heading" hidden>
+        <h1 id="healed-heading" tabindex="-1">${healRerunHealthy ? "The collector returned healthy output" : healApproved ? "The collector is awaiting a healthy rerun" : "The proposed template was rejected"}</h1>
+        <p class="lead">${escapeHtml(heal.approval.message)}</p>
+        <section class="evidence${healApproved ? "" : " limitation-panel"}" data-section="collector-heal-result" aria-labelledby="collector-heal-result-heading">
+          <div class="section-heading"><span class="section-kicker">Collector health</span><h2 id="collector-heal-result-heading">${healRerunHealthy ? "Healthy rerun completed" : healApproved ? "Healthy rerun not completed" : "Nothing was changed"}</h2></div>
+          <p>${escapeHtml(heal.rerun.message)} ${escapeHtml(limitedHealthMessage)}</p>
         </section>
       </section>` : ""}
     </div>

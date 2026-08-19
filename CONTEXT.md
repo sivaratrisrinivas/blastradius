@@ -23,3 +23,7 @@ _Avoid_: Potential impact, severity
 **CollectorHealth**:
 The limited health state inferred from zero results, required-field collapse, or schema failure. These signals can detect some collector drift but cannot prove that semantically correct content was extracted.
 _Avoid_: Guaranteed scraper correctness
+
+**CollectorHeal**:
+A Bright Data self-healing cycle for one drifted collector: detect, compose a prompt from the detected signal, heal, await approval, approve or reject, rerun. The collector identity is unchanged; only its template moves.
+_Avoid_: Repair, recovery, auto-fix

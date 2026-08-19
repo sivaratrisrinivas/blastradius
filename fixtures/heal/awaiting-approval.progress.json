@@ -1,0 +1,254 @@
+{
+  "id": "ia_recorded_heal_job",
+  "step": "user_approval",
+  "completed_steps": [
+    "planner",
+    "control_preview_runner",
+    "code_fixer",
+    "step_preview_runner",
+    "request_fulfillment_validator",
+    "step_advance"
+  ],
+  "status": "pending_answer",
+  "diff": {
+    "template_a": {
+      "_id": "000000000000000000000000",
+      "name": "New ide-automation template",
+      "steps": [
+        {
+          "name": "New ide-automation template",
+          "code": "navigate(input.url);\ncollect(parse());",
+          "worker": "code",
+          "input": [
+            {
+              "url": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/"
+            }
+          ],
+          "features": [
+            "cmd.navigate",
+            "cmd.parse",
+            "cmd.collect"
+          ],
+          "fields": {
+            "url": {
+              "type": "url",
+              "required": true
+            }
+          },
+          "parser": {
+            "parser": "const vendor = new URL(input.url).hostname.includes('slack') ? 'Slack' : \n               new URL(input.url).hostname.split('.')[0];\n\nconst sourceUrl = new URL(input.url);\n\nconst retrievedAt = new Date();\n\nconst content = $('article').text_sane();\n\n// Extract the exact excerpt from the first paragraph, removing struck-through dates\nconst firstParagraph = $('article p').first();\nconst clonedParagraph = firstParagraph.clone();\nclonedParagraph.find('s').remove();\nconst excerpt = clonedParagraph.text_sane();\n\n// Extract files.upload from the first code element in the first paragraph and prepend 'slack.'\nconst capabilityIdentifier = 'slack.' + $('article p:first-of-type code').first().text_sane();\n\nconst changeType = content.toLowerCase().includes('sunset') ? 'shutdown' : \n                   content.toLowerCase().includes('deprecat') ? 'deprecation' : \n                   'change';\n\n// Extract November 12, 2025 - the first strong element NOT inside a strikethrough tag\nconst deadlineOriginal = $('article p:first-of-type strong').filter(function() {\n  return !$(this).parent('s').length;\n}).first().text_sane();\n\nlet deadlineIso = null;\nif (deadlineOriginal) {\n  const parsed = new Date(deadlineOriginal);\n  if (!isNaN(parsed.getTime())) {\n    deadlineIso = parsed;\n  }\n}\n\nreturn {\n  vendor,\n  sourceUrl,\n  retrievedAt,\n  content,\n  excerpt,\n  capabilityIdentifier,\n  changeType,\n  deadlineOriginal,\n  deadlineIso\n};",
+            "sandbox_version": 1,
+            "id": "p_recorded_parser.1"
+          },
+          "parse_code": "const vendor = new URL(input.url).hostname.includes('slack') ? 'Slack' : \n               new URL(input.url).hostname.split('.')[0];\n\nconst sourceUrl = new URL(input.url);\n\nconst retrievedAt = new Date();\n\nconst content = $('article').text_sane();\n\n// Extract the exact excerpt from the first paragraph, removing struck-through dates\nconst firstParagraph = $('article p').first();\nconst clonedParagraph = firstParagraph.clone();\nclonedParagraph.find('s').remove();\nconst excerpt = clonedParagraph.text_sane();\n\n// Extract files.upload from the first code element in the first paragraph and prepend 'slack.'\nconst capabilityIdentifier = 'slack.' + $('article p:first-of-type code').first().text_sane();\n\nconst changeType = content.toLowerCase().includes('sunset') ? 'shutdown' : \n                   content.toLowerCase().includes('deprecat') ? 'deprecation' : \n                   'change';\n\n// Extract November 12, 2025 - the first strong element NOT inside a strikethrough tag\nconst deadlineOriginal = $('article p:first-of-type strong').filter(function() {\n  return !$(this).parent('s').length;\n}).first().text_sane();\n\nlet deadlineIso = null;\nif (deadlineOriginal) {\n  const parsed = new Date(deadlineOriginal);\n  if (!isNaN(parsed.getTime())) {\n    deadlineIso = parsed;\n  }\n}\n\nreturn {\n  vendor,\n  sourceUrl,\n  retrievedAt,\n  content,\n  excerpt,\n  capabilityIdentifier,\n  changeType,\n  deadlineOriginal,\n  deadlineIso\n};"
+        }
+      ],
+      "visibility": "private",
+      "user": "recorded-service@example.com",
+      "status": {
+        "value": "development",
+        "last_modified": {
+          "date": "2026-08-18T21:36:11.495Z",
+          "email": "recorded-service@example.com"
+        }
+      },
+      "family": "t_recorded_template",
+      "patch": 2,
+      "example_output": "{\"vendor\":\"Slack\",\"sourceUrl\":\"https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/\",\"retrievedAt\":{},\"content\":\"The files.upload method is retiring, to be replac...se contact us. Tags: Deprecation breaking change\",\"excerpt\":\"The original web API method for uploading files t....upload , is being sunset on November 12, 2025 .\",\"capabilityIdentifier\":\"slack.files.upload\",\"changeType\":\"shutdown\",\"deadlineOriginal\":\"November 12, 2025\",\"deadlineIso\":{}}",
+      "domain": "docs.slack.dev",
+      "url": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/",
+      "use_case": "other",
+      "customer": "hl_recorded",
+      "sandbox_version": 1,
+      "example_input": [
+        {
+          "url": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/"
+        }
+      ],
+      "output_fields": {
+        "type": "object",
+        "fields": {
+          "vendor": {
+            "type": "text"
+          },
+          "sourceUrl": {
+            "type": "url"
+          },
+          "retrievedAt": {
+            "type": "date"
+          },
+          "content": {
+            "type": "text"
+          },
+          "excerpt": {
+            "type": "text"
+          },
+          "capabilityIdentifier": {
+            "type": "text"
+          },
+          "changeType": {
+            "type": "text"
+          },
+          "deadlineOriginal": {
+            "type": "text"
+          },
+          "deadlineIso": {
+            "type": "date"
+          }
+        }
+      },
+      "features": [
+        "cmd.navigate",
+        "cmd.parse",
+        "cmd.collect"
+      ],
+      "code_environment": "intent",
+      "shared_libs": [],
+      "source": "dca-ide-automation-recorded",
+      "replace": "t_recorded_template.1",
+      "customer_id": "hl_recorded",
+      "id": "t_recorded_template.2",
+      "version": "2",
+      "discovery": false,
+      "last_modified": {
+        "email": "recorded-service@example.com",
+        "date": "2026-08-18T21:36:11.499Z"
+      }
+    },
+    "template_b": {
+      "_id": {
+        "buffer": {
+          "0": 106,
+          "1": 132,
+          "2": 208,
+          "3": 75,
+          "4": 87,
+          "5": 200,
+          "6": 11,
+          "7": 92,
+          "8": 206,
+          "9": 66,
+          "10": 159,
+          "11": 255
+        }
+      },
+      "name": "New ide-automation template",
+      "steps": [
+        {
+          "name": "New ide-automation template",
+          "code": "navigate(input.url);\ncollect(parse());",
+          "worker": "code",
+          "input": [
+            {
+              "url": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/"
+            }
+          ],
+          "features": [
+            "cmd.navigate",
+            "cmd.parse",
+            "cmd.collect"
+          ],
+          "fields": {
+            "url": {
+              "type": "url",
+              "required": true
+            }
+          },
+          "parser": {
+            "parser": "const vendor = new URL(input.url).hostname.includes('slack') ? 'Slack' : \n               new URL(input.url).hostname.split('.')[0];\n\nconst sourceUrl = new URL(input.url);\n\nconst retrievedAt = new Date();\n\nconst content = $('article').text_sane();\n\n// Extract the exact excerpt from the first paragraph, removing struck-through dates\nconst firstParagraph = $('article p').first();\nconst clonedParagraph = firstParagraph.clone();\nclonedParagraph.find('s').remove();\nconst excerpt = clonedParagraph.text_sane();\n\n// Extract capability identifier from h1 heading (more reliable than first paragraph)\nconst h1Text = $('article h1').text_sane();\nconst methodMatch = h1Text.match(/([\\w.]+)\\s+method/i);\nconst capabilityIdentifier = methodMatch ? 'slack.' + methodMatch[1] : null;\n\nconst changeType = content.toLowerCase().includes('sunset') ? 'shutdown' : \n                   content.toLowerCase().includes('deprecat') ? 'deprecation' : \n                   'change';\n\n// Extract November 12, 2025 - the first strong element NOT inside a strikethrough tag\nconst deadlineOriginal = $('article p:first-of-type strong').filter(function() {\n  return !$(this).parent('s').length;\n}).first().text_sane();\n\nlet deadlineIso = null;\nif (deadlineOriginal) {\n  const parsed = new Date(deadlineOriginal);\n  if (!isNaN(parsed.getTime())) {\n    deadlineIso = parsed;\n  }\n}\n\nreturn {\n  vendor,\n  sourceUrl,\n  retrievedAt,\n  content,\n  excerpt,\n  capabilityIdentifier,\n  changeType,\n  deadlineOriginal,\n  deadlineIso\n};\n",
+            "sandbox_version": 1,
+            "id": "p_recorded_parser.1"
+          },
+          "parse_code": "const vendor = new URL(input.url).hostname.includes('slack') ? 'Slack' : \n               new URL(input.url).hostname.split('.')[0];\n\nconst sourceUrl = new URL(input.url);\n\nconst retrievedAt = new Date();\n\nconst content = $('article').text_sane();\n\n// Extract the exact excerpt from the first paragraph, removing struck-through dates\nconst firstParagraph = $('article p').first();\nconst clonedParagraph = firstParagraph.clone();\nclonedParagraph.find('s').remove();\nconst excerpt = clonedParagraph.text_sane();\n\n// Extract capability identifier from h1 heading (more reliable than first paragraph)\nconst h1Text = $('article h1').text_sane();\nconst methodMatch = h1Text.match(/([\\w.]+)\\s+method/i);\nconst capabilityIdentifier = methodMatch ? 'slack.' + methodMatch[1] : null;\n\nconst changeType = content.toLowerCase().includes('sunset') ? 'shutdown' : \n                   content.toLowerCase().includes('deprecat') ? 'deprecation' : \n                   'change';\n\n// Extract November 12, 2025 - the first strong element NOT inside a strikethrough tag\nconst deadlineOriginal = $('article p:first-of-type strong').filter(function() {\n  return !$(this).parent('s').length;\n}).first().text_sane();\n\nlet deadlineIso = null;\nif (deadlineOriginal) {\n  const parsed = new Date(deadlineOriginal);\n  if (!isNaN(parsed.getTime())) {\n    deadlineIso = parsed;\n  }\n}\n\nreturn {\n  vendor,\n  sourceUrl,\n  retrievedAt,\n  content,\n  excerpt,\n  capabilityIdentifier,\n  changeType,\n  deadlineOriginal,\n  deadlineIso\n};\n"
+        }
+      ],
+      "visibility": "private",
+      "user": "recorded-service@example.com",
+      "status": {
+        "value": "development",
+        "last_modified": {
+          "date": "2026-08-18T21:36:11.495Z",
+          "email": "recorded-service@example.com"
+        }
+      },
+      "family": "t_recorded_template",
+      "patch": 2,
+      "example_output": "{\"vendor\":\"Slack\",\"sourceUrl\":\"https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/\",\"retrievedAt\":{},\"content\":\"The files.upload method is retiring, to be replac...se contact us. Tags: Deprecation breaking change\",\"excerpt\":\"The original web API method for uploading files t....upload , is being sunset on November 12, 2025 .\",\"capabilityIdentifier\":\"slack.files.upload\",\"changeType\":\"shutdown\",\"deadlineOriginal\":\"November 12, 2025\",\"deadlineIso\":{}}",
+      "domain": "docs.slack.dev",
+      "url": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/",
+      "use_case": "other",
+      "customer": "hl_recorded",
+      "sandbox_version": 1,
+      "example_input": [
+        {
+          "url": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/"
+        }
+      ],
+      "output_fields": {
+        "type": "object",
+        "fields": {
+          "vendor": {
+            "type": "text"
+          },
+          "sourceUrl": {
+            "type": "url"
+          },
+          "retrievedAt": {
+            "type": "date"
+          },
+          "content": {
+            "type": "text"
+          },
+          "excerpt": {
+            "type": "text"
+          },
+          "capabilityIdentifier": {
+            "type": "text"
+          },
+          "changeType": {
+            "type": "text"
+          },
+          "deadlineOriginal": {
+            "type": "text"
+          },
+          "deadlineIso": {
+            "type": "date"
+          }
+        }
+      },
+      "features": [
+        "cmd.navigate",
+        "cmd.parse",
+        "cmd.collect"
+      ],
+      "code_environment": "intent",
+      "shared_libs": [],
+      "source": "dca-ide-automation-recorded",
+      "replace": "t_recorded_template.1",
+      "customer_id": "hl_recorded",
+      "id": "t_recorded_template.2",
+      "version": "2",
+      "discovery": false,
+      "last_modified": {
+        "email": "recorded-service@example.com",
+        "date": "2026-08-18T21:36:11.499Z"
+      }
+    },
+    "title": "View refactor changes",
+    "user": "recorded-operator@example.com"
+  },
+  "success": true,
+  "preview_result": [
+    {
+      "vendor": "Slack",
+      "sourceUrl": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/",
+      "retrievedAt": {},
+      "content": "The files.upload method is retiring, to be replac...se contact us. Tags: Deprecation breaking change",
+      "excerpt": "The original web API method for uploading files t....upload , is being sunset on November 12, 2025 .",
+      "capabilityIdentifier": "slack.files.upload",
+      "changeType": "shutdown",
+      "deadlineOriginal": "November 12, 2025",
+      "deadlineIso": {}
+    }
+  ]
+}

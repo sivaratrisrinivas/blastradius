@@ -23,8 +23,9 @@ export function collectorHealthError(
   collector: CollectorIdentity,
   signal: CollectorHealthSignal,
   message: string,
+  fields: readonly string[],
   vendor?: Vendor,
   sourceUrl?: string
 ): CollectorHealthError {
-  return new CollectorHealthError(collectorHealthArtifact(driftedCollectorHealth(collector, signal, message), vendor, sourceUrl));
+  return new CollectorHealthError(collectorHealthArtifact(driftedCollectorHealth(collector, signal, message, fields), vendor, sourceUrl));
 }

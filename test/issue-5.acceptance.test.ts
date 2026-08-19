@@ -51,22 +51,29 @@ test("collection withholds candidates that fail provenance or assertion gates", 
     {
       name: "foreign source",
       changes: { sourceUrl: "https://vendor.example/deprecation" },
-      message: /allowed first-party Slack source/
+      message: /allowed first-party Slack source/,
+      stores: "nothing"
     },
     {
       name: "missing lifecycle language",
       changes: { excerpt: "The files.upload method is documented on November 12, 2025." },
-      message: /lifecycle-language/
+      message: /lifecycle-language/,
+      stores: "nothing"
     },
     {
-      name: "missing capability identity",
+      // An empty required collector field is collector drift, so CollectorHealth withholds it
+      // before interpretation runs. The capability-identity gate itself is covered directly in
+      // issue-5.rules.test.ts.
+      name: "collapsed capability identity",
       changes: { capabilityIdentifier: "" },
-      message: /capabilityIdentifier must be a non-empty string/
+      message: /required-field-collapse/,
+      stores: "collector-health-diagnostic"
     },
     {
       name: "unsupported change type",
       changes: { changeType: "breaking-change", excerpt: "The files.upload method is deprecated on November 12, 2025." },
-      message: /change-type/
+      message: /change-type/,
+      stores: "nothing"
     }
   ];
 
@@ -77,7 +84,7 @@ test("collection withholds candidates that fail provenance or assertion gates", 
 
     assert.notEqual(result.status, 0, candidateCase.name);
     assert.match(result.stderr, candidateCase.message, candidateCase.name);
-    assert.equal(existsSync(candidate.outputPath), false, candidateCase.name);
+    assert.equal(existsSync(candidate.outputPath), candidateCase.stores === "collector-health-diagnostic", candidateCase.name);
   }
 });
 

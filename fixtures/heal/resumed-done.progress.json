@@ -1,0 +1,14 @@
+{
+  "id": "ia_recorded_heal_job",
+  "step": "user_approval",
+  "completed_steps": [
+    "planner",
+    "control_preview_runner",
+    "code_fixer",
+    "step_preview_runner",
+    "request_fulfillment_validator",
+    "step_advance",
+    "user_approval"
+  ],
+  "status": "done"
+}

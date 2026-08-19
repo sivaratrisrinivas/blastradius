@@ -156,9 +156,10 @@ function throwHealth(
   request: CollectionRequest,
   config: BrightDataConfig,
   signal: "zero-results" | "required-field-collapse" | "schema-failure",
-  message: string
+  message: string,
+  fields: readonly string[] = []
 ): never {
-  throw collectorHealthError({ identity: config.collectorId, version: config.collectorVersion }, signal, message, request.vendor, request.sourceUrl);
+  throw collectorHealthError({ identity: config.collectorId, version: config.collectorVersion }, signal, message, fields, request.vendor, request.sourceUrl);
 }
 
 function assertDatasetRecordContract(
@@ -190,8 +191,8 @@ function assertDatasetRecordContract(
   }
   const deadlineIso = valueFrom(value, "deadlineIso", "deadline_iso");
   if (deadlineIso !== undefined && deadlineIso !== null && !isStringValue(deadlineIso)) malformed.push("deadlineIso");
-  if (collapsed.length > 0) throwHealth(request, config, "required-field-collapse", `Required collector field(s) were missing or empty: ${collapsed.join(", ")}.`);
-  if (malformed.length > 0) throwHealth(request, config, "schema-failure", `Collector field(s) had an unsupported shape: ${malformed.join(", ")}.`);
+  if (collapsed.length > 0) throwHealth(request, config, "required-field-collapse", `Required collector field(s) were missing or empty: ${collapsed.join(", ")}.`, collapsed);
+  if (malformed.length > 0) throwHealth(request, config, "schema-failure", `Collector field(s) had an unsupported shape: ${malformed.join(", ")}.`, malformed);
 }
 
 function collectionFromRecord(

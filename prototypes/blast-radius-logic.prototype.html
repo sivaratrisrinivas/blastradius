@@ -182,14 +182,14 @@
             state.screen = "report";
             return state;
 
-          case "START_REPAIR":
+          case "START_HEAL":
             if (!state.impact) return state;
             state.collector.health = "drift-detected";
             state.collector.failureReason = "Required field capability_identifier is empty";
             state.screen = "drift";
             return state;
 
-          case "PREPARE_REPAIR":
+          case "PREPARE_HEAL":
             if (state.collector.health !== "drift-detected") return state;
             state.collector.diagnosis = "Vendor page selector no longer reaches the capability heading";
             state.collector.proposedVersion = "collector-v2";
@@ -197,14 +197,14 @@
             state.screen = "approval";
             return state;
 
-          case "APPROVE_REPAIR":
+          case "APPROVE_HEAL":
             if (state.collector.validation !== "passed") return state;
             state.collector.approval = "approved";
             state.collector.activeVersion = state.collector.proposedVersion;
             state.collector.proposedVersion = null;
             state.collector.health = "healthy";
             state.collector.failureReason = null;
-            state.screen = "recovered";
+            state.screen = "healed";
             return state;
 
           case "RESTART":
@@ -266,7 +266,7 @@
           </div>
           ${locationList(state.impact.codeMatches)}
           <div class="warning"><strong>1 unresolved usage</strong><br><code>src/runtime.ts:19</code> uses a computed property that cannot be proven statically.</div>
-          ${primaryAction("START_REPAIR", "See how collector recovery works", "secondary")}
+          ${primaryAction("START_HEAL", "See how collector healing works", "secondary")}
           <p class="fine-print">Repository analysis stayed local. Only official public vendor material was externally collected.</p>
         </section>`,
       drift: () => `
@@ -274,29 +274,29 @@
           <h1 tabindex="-1">The collector lost a required field</h1>
           <p class="lead">Blast Radius stopped the result instead of publishing incomplete evidence. The active collector remains <code>collector-v1</code>.</p>
           <div class="warning"><strong>Required-field collapse</strong><br><code>capability_identifier</code> is empty.</div>
-          ${primaryAction("PREPARE_REPAIR", "Diagnose and validate a repair")}
+          ${primaryAction("PREPARE_HEAL", "See what Bright Data proposed")}
         </section>`,
       approval: () => `
         <section class="screen active">
-          <h1 tabindex="-1">The proposed repair passed validation</h1>
+          <h1 tabindex="-1">Bright Data proposed a new parse step</h1>
           <p class="lead">The selector now reaches the capability heading. Schema and required-field checks pass, but production is still on <code>collector-v1</code>.</p>
           <div class="evidence">
             <p class="evidence-label">Proposed change</p>
             <p class="quote"><code>collector-v1 → collector-v2</code></p>
             <p><span class="badge">Validation passed</span></p>
           </div>
-          ${primaryAction("APPROVE_REPAIR", "Approve and activate collector-v2")}
+          ${primaryAction("APPROVE_HEAL", "Approve the proposed template")}
         </section>`,
-      recovered: () => `
+      healed: () => `
         <section class="screen active">
-          <h1 tabindex="-1">The collector recovered</h1>
+          <h1 tabindex="-1">The collector returned healthy output</h1>
           <p class="lead"><code>collector-v2</code> is active only because validation passed and a human approved it.</p>
           <div class="evidence"><p class="evidence-label">Collector health</p><p class="quote">Healthy rerun completed</p></div>
           ${primaryAction("RESTART", "Restart three-click demo", "secondary")}
         </section>`
     };
 
-    const progressByScreen = { notice: 0, repository: 1, results: 2, report: 3, drift: 3, approval: 3, recovered: 3 };
+    const progressByScreen = { notice: 0, repository: 1, results: 2, report: 3, drift: 3, approval: 3, healed: 3 };
     const progressCopyByScreen = {
       notice: "Step 1 of 3 · Verify notice",
       repository: "Step 2 of 3 · Scan repository",
@@ -304,7 +304,7 @@
       report: "Impact report complete",
       drift: "Trust layer · Drift detected",
       approval: "Trust layer · Approval required",
-      recovered: "Trust layer · Healthy"
+      healed: "Trust layer · Healthy"
     };
     let isFirstRender = true;
     const render = () => {
@@ -324,9 +324,9 @@
           VERIFY_NOTICE: "Verifying official evidence…",
           SCAN_REPOSITORY: "Scanning locally…",
           OPEN_REPORT: "Building impact report…",
-          START_REPAIR: "Simulating collector drift…",
-          PREPARE_REPAIR: "Validating proposed repair…",
-          APPROVE_REPAIR: "Activating approved repair…",
+          START_HEAL: "Simulating collector drift…",
+          PREPARE_HEAL: "Reading the proposed template…",
+          APPROVE_HEAL: "Recording the human decision…",
           RESTART: "Restarting…"
         };
         button.disabled = true;

@@ -45,9 +45,9 @@ If either receipt is missing, Blast Radius keeps the result out of the Impact li
 
 The product therefore prefers an incomplete answer over a confident-looking answer that cannot be checked.
 
-## Three words to understand first
+## The words the product uses
 
-Blast Radius uses a small vocabulary so that its output stays precise:
+Blast Radius keeps a small vocabulary so that its output stays precise. Every one of these words means one thing, in the code and in the report:
 
 | Term | Plain-English meaning |
 | --- | --- |
@@ -57,6 +57,7 @@ Blast Radius uses a small vocabulary so that its output stays precise:
 | `Impact` | A `CapabilityChange` with at least one proven `CodeMatch`. |
 | `Analysis Limitation` | Related-looking code that the scanner cannot prove. |
 | `CollectorHealth` | A limited record of whether collection returned usable-shaped data. |
+| `CollectorHeal` | One attempt to fix a drifted collector, from detection through a human decision to a rerun. |
 
 `CodeMatch` records carry evidence strength: `direct` or `alias-traced`.
 
@@ -71,6 +72,8 @@ blast collect  ->  VendorNotice + CapabilityChange
 blast scan     ->  CodeMatches + Analysis Limitations
 blast report   ->  local HTML Impact Report
 ```
+
+There is a fourth command, `blast heal`, but it is not part of the normal path. It only appears when collection detects that a collector has drifted, and it is described under [Optional collector healing](#optional-collector-healing).
 
 ### 1. `collect` checks the notice
 
@@ -294,7 +297,7 @@ The adapter sends Bright Data only the selected curated public vendor URL.
 
 It never sends repository source, paths, snippets, symbols, CodeMatches, or scan artifacts.
 
-Run `npm run test:brightdata` for the narrow live contract check. The test is skipped unless both environment values are configured.
+Run `npm run test:brightdata` for the narrow live contract checks. The collection check is skipped unless both environment values are configured, and the healing check needs a further opt-in described below.
 
 See [docs/brightdata-collection.md](docs/brightdata-collection.md) for the collector output details.
 
@@ -314,66 +317,81 @@ A healthy record means only that those three checks passed.
 
 It does not prove semantic correctness, completeness, or guaranteed scraper behavior.
 
-## Optional collector recovery
+## Optional collector healing
 
-Recovery is a trust workflow underneath the main notice-to-code workflow.
+Healing is a trust workflow underneath the main notice-to-code workflow. It drives Bright Data's own self-healing endpoint, so the collector's template is rewritten by the vendor's AI rather than renamed locally.
 
 It follows this sequence:
 
 ```text
-detect -> diagnose -> propose -> validate -> human approval -> activate -> healthy rerun
+detect -> compose prompt -> heal -> await approval -> approve or reject -> healthy rerun
 ```
 
-The old collector remains active until validation passes and a person explicitly approves the proposal.
+The collector keeps running its current template until a person explicitly approves the proposal. `--auto-approve` and `--auto-save` are not on the product path at all: the CLI refuses both.
 
-Diagnose a stored health failure:
+Compose the heal prompt from a stored health failure. The prompt is built from the detected signal, not typed by hand — it names the field that collapsed and, given a previous healthy notice, the value that field last held:
 
 ```bash
-node dist/src/cli.js repair diagnose \
+node dist/src/cli.js heal detect \
   --diagnostic /tmp/blast-radius-demo/collector-health.json \
-  --output /tmp/blast-radius-demo/repair-proposal.json
+  --last-known-good /tmp/blast-radius-demo/vendor-notice.json \
+  --output /tmp/blast-radius-demo/heal-detected.json
 ```
 
-Validate the proposed collector against a healthy fixture:
+Send it to Bright Data and stop at the approval gate. This takes two to three minutes and spends credits:
 
 ```bash
-node dist/src/cli.js repair validate \
-  --proposal /tmp/blast-radius-demo/repair-proposal.json \
-  --fixture fixtures/collector-health/healthy-repair-v2.json \
-  --output /tmp/blast-radius-demo/repair-validated.json
+node dist/src/cli.js heal run \
+  --heal /tmp/blast-radius-demo/heal-detected.json \
+  --output /tmp/blast-radius-demo/heal-gated.json
 ```
 
-Approve only the validated proposal:
+Add `--recorded fixtures/heal/awaiting-approval.progress.json` to replay a captured response instead. The artifact then records `heal.source: "recorded"`, and the report says so, so replayed evidence is never shown as a live call.
+
+Approve or reject the proposed template. Rejecting leaves the collector exactly as it was:
 
 ```bash
-node dist/src/cli.js repair approve \
-  --proposal /tmp/blast-radius-demo/repair-validated.json \
-  --output /tmp/blast-radius-demo/repair-activated.json
+node dist/src/cli.js heal approve \
+  --heal /tmp/blast-radius-demo/heal-gated.json \
+  --output /tmp/blast-radius-demo/heal-approved.json
+
+node dist/src/cli.js heal reject \
+  --heal /tmp/blast-radius-demo/heal-gated.json \
+  --output /tmp/blast-radius-demo/heal-rejected.json
 ```
 
 Run the healthy rerun:
 
 ```bash
-node dist/src/cli.js repair rerun \
-  --proposal /tmp/blast-radius-demo/repair-activated.json \
-  --fixture fixtures/collector-health/healthy-repair-v2.json \
-  --output /tmp/blast-radius-demo/repair-recovered.json
+node dist/src/cli.js heal rerun \
+  --heal /tmp/blast-radius-demo/heal-approved.json \
+  --fixture fixtures/collector-health/healed-rerun.json \
+  --output /tmp/blast-radius-demo/heal-rerun.json
 ```
 
-You can pass the recovered artifact to `report`:
+`--fixture` reruns against a stored notice. Swap it for `--live` to re-collect from the curated source the drift was detected on, using the same Bright Data credentials as `collect --live`:
+
+```bash
+node dist/src/cli.js heal rerun \
+  --heal /tmp/blast-radius-demo/heal-approved.json \
+  --live \
+  --output /tmp/blast-radius-demo/heal-rerun.json
+```
+
+A live rerun needs the vendor and source URL recorded on the heal, which `heal detect` carries across from the diagnostic. Either way the rerun exits non-zero if the collector drifts again, and the artifact records the failure rather than a healthy result.
+
+You can pass the healed artifact to `report`:
 
 ```bash
 node dist/src/cli.js report \
   --scan /tmp/blast-radius-demo/scan-result.json \
-  --repair /tmp/blast-radius-demo/repair-recovered.json \
-  --output /tmp/blast-radius-demo/impact-report-with-recovery.html
+  --heal /tmp/blast-radius-demo/heal-rerun.json \
+  --output /tmp/blast-radius-demo/impact-report-with-healing.html
 ```
 
-Without `--repair`, the report stays on the simple three-action path.
+Without `--heal`, the report stays on the simple three-action path. With it, the approval gate shows the line-level diff between the collector's current `parse_code` and the one Bright Data proposed.
 
-Failed validation and unapproved activation remain non-activating artifacts.
-
-A healthy rerun says only that the supported health checks passed. It does not claim autonomous or guaranteed repair.
+Healing moves a collector's template, never its identity. A healthy rerun says only that the supported health checks passed; it does not claim autonomous or guaranteed correctness.
 
 ## The local report
 
@@ -438,14 +456,18 @@ The scanner can miss code. It must not present unproved code as an Impact.
 | --- | --- |
 | `src/collection/` | Validates stored vendor notice fixtures. |
 | `src/collection/bright-data.ts` | Opt-in public Bright Data collection adapter. |
-| `src/collection/repair.ts` | Diagnose, validate, approve, activate, and rerun recovery states. |
+| `src/collection/heal.ts` | Detect, compose a prompt, heal, approve or reject, and rerun. |
+| `src/collection/bright-data-heal.ts` | Bright Data self-healing adapter and the recorded-response replay seam. |
 | `src/scan/` | Produces proven CodeMatches and Analysis Limitations. |
 | `src/domain/` | Defines and validates versioned JSON artifacts. |
 | `src/report/` | Renders the local HTML Impact Report. |
-| `src/cli.ts` | Exposes `collect`, `scan`, `report`, and `repair`. |
+| `src/report/line-diff.ts` | Turns two collector templates into the line diff shown at the approval gate. |
+| `src/cli.ts` | Exposes `collect`, `scan`, `report`, and `heal`. |
 | `fixtures/` | Vendor notices and small repositories used by tests. |
+| `fixtures/heal/` | Real Bright Data healing responses, recorded once and replayed offline. |
 | `test/` | Acceptance, browser, and focused rule tests. |
 | `docs/product-contract.md` | Product rules and MVP boundary. |
+| `docs/adr/` | The decisions behind the design, and why each one was made. |
 | `CONTEXT.md` | Domain vocabulary and definitions. |
 | `tools/oxlint/anti-slop/` | Local anti-slop Oxlint plugin. |
 
@@ -487,7 +509,16 @@ Run the full acceptance suite:
 npm test
 ```
 
-The tests cover notice validation, assertion gates, deadline handling, collector health, human-approved recovery, vendor matches, aliases, decoys, and dynamic access.
+The tests cover notice validation, assertion gates, deadline handling, collector health, human-approved healing, vendor matches, aliases, decoys, and dynamic access.
+
+The healing tests replay recorded Bright Data responses through a fake fetcher and never reach the network, so `npm test` works with no credentials and no connection.
+
+Two narrow live contract checks are opt-in. The collection one needs credentials. The healing one starts a real job on the live collector and spends credits, so credentials alone are not enough — it also needs a deliberate `BLASTRADIUS_LIVE_HEAL=1`, and it always ends in a rejection so the collector is left exactly as it was found:
+
+```bash
+npm run test:brightdata                            # collection contract only
+BLASTRADIUS_LIVE_HEAL=1 npm run test:brightdata    # also runs the live heal
+```
 
 They also cover cross-file aliases, limitation-only scans, reports, and accessibility behavior.
 

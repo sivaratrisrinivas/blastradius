@@ -4,7 +4,7 @@
   "retrievedAt": "2026-08-19T00:00:00Z",
   "collector": {
     "identity": "deterministic-fixture",
-    "version": "fixture-v2"
+    "version": "fixture-v1"
   },
   "content": "The files.upload method stopped functioning on November 12, 2025.",
   "excerpt": "The files.upload method stopped functioning on November 12, 2025.",
