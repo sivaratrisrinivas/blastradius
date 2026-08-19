@@ -1,0 +1,11 @@
+{
+  "vendor": "Slack",
+  "sourceUrl": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/",
+  "retrievedAt": {},
+  "content": "The files.upload method is retiring, to be replac...se contact us. Tags: Deprecation breaking change",
+  "excerpt": "The original web API method for uploading files t....upload , is being sunset on November 12, 2025 .",
+  "capabilityIdentifier": "slack.files.upload",
+  "changeType": "shutdown",
+  "deadlineOriginal": "November 12, 2025",
+  "deadlineIso": {}
+}

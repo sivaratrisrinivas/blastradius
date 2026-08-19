@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "kind": "vendor-notice",
+  "collection": {
+    "schemaVersion": 1,
+    "kind": "vendor-notice-collection",
+    "vendor": "Slack",
+    "sourceUrl": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/",
+    "retrievedAt": "2026-08-18T00:00:00Z",
+    "collector": {
+      "identity": "deterministic-fixture",
+      "version": "fixture-v1"
+    },
+    "content": "The files.upload method stopped functioning on November 12, 2025.",
+    "excerpt": "The files.upload method stopped functioning on November 12, 2025.",
+    "capabilityIdentifier": "slack.files.upload",
+    "changeType": "shutdown",
+    "deadlineOriginal": "November 12, 2025",
+    "deadlineIso": "2025-11-12"
+  },
+  "notice": {
+    "vendor": "Slack",
+    "sourceUrl": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/",
+    "retrievedAt": "2026-08-18T00:00:00Z",
+    "excerpt": "The files.upload method stopped functioning on November 12, 2025."
+  },
+  "capabilityChange": {
+    "vendor": "Slack",
+    "canonicalIdentifier": "slack.files.upload",
+    "changeType": "shutdown",
+    "deadlineOriginal": "November 12, 2025",
+    "deadlineIso": "2025-11-12"
+  },
+  "collectorHealth": {
+    "status": "healthy",
+    "signal": null,
+    "collector": {
+      "identity": "deterministic-fixture",
+      "version": "fixture-v1"
+    },
+    "checks": {
+      "zeroResults": "passed",
+      "requiredFields": "passed",
+      "schema": "passed"
+    },
+    "fields": [],
+    "message": "CollectorHealth: passed zero-results, required-field-collapse, and schema-failure checks only; this does not establish semantic correctness or completeness."
+  }
+}

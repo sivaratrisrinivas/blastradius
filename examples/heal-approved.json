@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "kind": "collector-heal",
+  "stage": "approved",
+  "detected": {
+    "signal": "required-field-collapse",
+    "collectorHealth": {
+      "status": "drifted",
+      "signal": "required-field-collapse",
+      "collector": {
+        "identity": "deterministic-fixture",
+        "version": "fixture-v1"
+      },
+      "checks": {
+        "zeroResults": "not-evaluated",
+        "requiredFields": "failed",
+        "schema": "not-evaluated"
+      },
+      "fields": [
+        "capabilityIdentifier"
+      ],
+      "message": "Required collection field(s) were missing or empty: capabilityIdentifier."
+    },
+    "vendor": "Slack",
+    "sourceUrl": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/"
+  },
+  "collector": {
+    "identity": "deterministic-fixture",
+    "version": "fixture-v1"
+  },
+  "diagnosis": "CollectorHealth required-field-collapse detected for deterministic-fixture@fixture-v1: Required collection field(s) were missing or empty: capabilityIdentifier. This diagnosis is limited to the supported health signal; it does not establish semantic scraper correctness.",
+  "prompt": {
+    "text": "Field capabilityIdentifier is null or empty in every row returned for https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/. It previously extracted capabilityIdentifier=\"slack.files.upload\". The lifecycle sentence on that page read: \"The files.upload method stopped functioning on November 12, 2025.\" Restore extraction of capabilityIdentifier for this page, and leave the other output fields unchanged.",
+    "fields": [
+      "capabilityIdentifier"
+    ]
+  },
+  "heal": {
+    "source": "recorded",
+    "jobId": "ia_recorded_heal_job",
+    "completedSteps": [
+      "planner",
+      "control_preview_runner",
+      "code_fixer",
+      "step_preview_runner",
+      "request_fulfillment_validator",
+      "step_advance",
+      "user_approval"
+    ],
+    "diff": {
+      "parseCodeBefore": "const vendor = new URL(input.url).hostname.includes('slack') ? 'Slack' : \n               new URL(input.url).hostname.split('.')[0];\n\nconst sourceUrl = new URL(input.url);\n\nconst retrievedAt = new Date();\n\nconst content = $('article').text_sane();\n\n// Extract the exact excerpt from the first paragraph, removing struck-through dates\nconst firstParagraph = $('article p').first();\nconst clonedParagraph = firstParagraph.clone();\nclonedParagraph.find('s').remove();\nconst excerpt = clonedParagraph.text_sane();\n\n// Extract files.upload from the first code element in the first paragraph and prepend 'slack.'\nconst capabilityIdentifier = 'slack.' + $('article p:first-of-type code').first().text_sane();\n\nconst changeType = content.toLowerCase().includes('sunset') ? 'shutdown' : \n                   content.toLowerCase().includes('deprecat') ? 'deprecation' : \n                   'change';\n\n// Extract November 12, 2025 - the first strong element NOT inside a strikethrough tag\nconst deadlineOriginal = $('article p:first-of-type strong').filter(function() {\n  return !$(this).parent('s').length;\n}).first().text_sane();\n\nlet deadlineIso = null;\nif (deadlineOriginal) {\n  const parsed = new Date(deadlineOriginal);\n  if (!isNaN(parsed.getTime())) {\n    deadlineIso = parsed;\n  }\n}\n\nreturn {\n  vendor,\n  sourceUrl,\n  retrievedAt,\n  content,\n  excerpt,\n  capabilityIdentifier,\n  changeType,\n  deadlineOriginal,\n  deadlineIso\n};",
+      "parseCodeAfter": "const vendor = new URL(input.url).hostname.includes('slack') ? 'Slack' : \n               new URL(input.url).hostname.split('.')[0];\n\nconst sourceUrl = new URL(input.url);\n\nconst retrievedAt = new Date();\n\nconst content = $('article').text_sane();\n\n// Extract the exact excerpt from the first paragraph, removing struck-through dates\nconst firstParagraph = $('article p').first();\nconst clonedParagraph = firstParagraph.clone();\nclonedParagraph.find('s').remove();\nconst excerpt = clonedParagraph.text_sane();\n\n// Extract capability identifier from h1 heading (more reliable than first paragraph)\nconst h1Text = $('article h1').text_sane();\nconst methodMatch = h1Text.match(/([\\w.]+)\\s+method/i);\nconst capabilityIdentifier = methodMatch ? 'slack.' + methodMatch[1] : null;\n\nconst changeType = content.toLowerCase().includes('sunset') ? 'shutdown' : \n                   content.toLowerCase().includes('deprecat') ? 'deprecation' : \n                   'change';\n\n// Extract November 12, 2025 - the first strong element NOT inside a strikethrough tag\nconst deadlineOriginal = $('article p:first-of-type strong').filter(function() {\n  return !$(this).parent('s').length;\n}).first().text_sane();\n\nlet deadlineIso = null;\nif (deadlineOriginal) {\n  const parsed = new Date(deadlineOriginal);\n  if (!isNaN(parsed.getTime())) {\n    deadlineIso = parsed;\n  }\n}\n\nreturn {\n  vendor,\n  sourceUrl,\n  retrievedAt,\n  content,\n  excerpt,\n  capabilityIdentifier,\n  changeType,\n  deadlineOriginal,\n  deadlineIso\n};\n"
+    },
+    "message": "A human approved the proposed template and Bright Data finished the job (terminal status done)."
+  },
+  "approval": {
+    "status": "approved",
+    "message": "Explicit human approval moved deterministic-fixture@fixture-v1 onto the healed template. The collector identity did not change."
+  },
+  "rerun": {
+    "status": "not-run",
+    "message": "Approval completed. Run a collection rerun to observe the healed template."
+  }
+}

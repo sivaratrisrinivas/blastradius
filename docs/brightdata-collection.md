@@ -47,6 +47,10 @@ BRIGHTDATA_COLLECTOR_ID_GOOGLE_MAPS_PLATFORM=c_...
 
 A heal targets the collector recorded on the CollectorHeal artifact, not the environment default. With a fleet, healing the wrong collector would be worse than not healing at all.
 
+## Custom collectors, not Scrapers Library entries
+
+All ten collectors behind the ten curated sources were built for this project with `bdata scraper create` against a natural-language description of the exact fields Blast Radius needs. None is a Scrapers Library / marketplace collector pointed at a vendor's site — no such pre-built entry returns `capabilityIdentifier`, `changeType`, or a verbatim `deadlineOriginal`, because those are Blast Radius's own extraction contract, not a general page scrape. The custom collector is the integration; nothing here depends on the Library.
+
 ## Building a collector
 
 The `bdata` CLI builds one from a natural-language description. There is no create-collector REST endpoint; `/dca` exposes only `trigger`, `dataset`, `collectors_list`, `refactor_template`, and `resume_automation_job`.
@@ -126,6 +130,19 @@ node dist/src/cli.js heal approve \
 ```
 
 `--last-known-good` takes a stored `vendor-notice` artifact from an earlier healthy collection, so the prompt can name the value the collapsed field last held.
+
+This is a real proposal Bright Data's healer produced for the Slack collector, recorded 19 Aug 2026 (`fixtures/heal/awaiting-approval.progress.json`, replayed by `examples/heal-approved.json`) — the extraction moved from a brittle first-paragraph selector to the page heading:
+
+```diff
+- // Extract files.upload from the first code element in the first paragraph and prepend 'slack.'
+- const capabilityIdentifier = 'slack.' + $('article p:first-of-type code').first().text_sane();
++ // Extract capability identifier from h1 heading (more reliable than first paragraph)
++ const h1Text = $('article h1').text_sane();
++ const methodMatch = h1Text.match(/([\w.]+)\s+method/i);
++ const capabilityIdentifier = methodMatch ? 'slack.' + methodMatch[1] : null;
+```
+
+`examples/impact-report-with-heal.html` renders this same diff the way the approval gate shows it to a human. See [examples/README.md](../examples/README.md) for how every example file was produced.
 
 `heal rerun --live` closes the loop against the real service: it re-collects from the curated source the drift was detected on, using the same credentials as `collect --live`, and fails if the collector drifts again.
 

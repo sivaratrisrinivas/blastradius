@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "kind": "collector-heal",
+  "stage": "detected",
+  "detected": {
+    "signal": "required-field-collapse",
+    "collectorHealth": {
+      "status": "drifted",
+      "signal": "required-field-collapse",
+      "collector": {
+        "identity": "deterministic-fixture",
+        "version": "fixture-v1"
+      },
+      "checks": {
+        "zeroResults": "not-evaluated",
+        "requiredFields": "failed",
+        "schema": "not-evaluated"
+      },
+      "fields": [
+        "capabilityIdentifier"
+      ],
+      "message": "Required collection field(s) were missing or empty: capabilityIdentifier."
+    },
+    "vendor": "Slack",
+    "sourceUrl": "https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/"
+  },
+  "collector": {
+    "identity": "deterministic-fixture",
+    "version": "fixture-v1"
+  },
+  "diagnosis": "CollectorHealth required-field-collapse detected for deterministic-fixture@fixture-v1: Required collection field(s) were missing or empty: capabilityIdentifier. This diagnosis is limited to the supported health signal; it does not establish semantic scraper correctness.",
+  "prompt": {
+    "text": "Field capabilityIdentifier is null or empty in every row returned for https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/. It previously extracted capabilityIdentifier=\"slack.files.upload\". The lifecycle sentence on that page read: \"The files.upload method stopped functioning on November 12, 2025.\" Restore extraction of capabilityIdentifier for this page, and leave the other output fields unchanged.",
+    "fields": [
+      "capabilityIdentifier"
+    ]
+  },
+  "heal": {
+    "source": "not-requested",
+    "jobId": null,
+    "completedSteps": [],
+    "diff": null,
+    "message": "The heal prompt is composed but has not been sent to Bright Data."
+  },
+  "approval": {
+    "status": "not-requested",
+    "message": "Approval cannot be requested until Bright Data proposes a template."
+  },
+  "rerun": {
+    "status": "not-run",
+    "message": "A healthy rerun is available only after a human approves the proposed template."
+  }
+}

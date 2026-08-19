@@ -106,6 +106,10 @@ Open `/tmp/blast-radius-demo/impact-report.html` in a browser. The Slack demo pr
 
 Two more end-to-end examples ship with the repo: swap `fixtures/openai-notice.json` + `fixtures/repository-openai`, or `fixtures/cloudflare-kv-notice.json` + `fixtures/repository-cloudflare`, into the same three commands.
 
+## Example output
+
+[`examples/`](examples/) commits the structured output of every stage — a real Bright Data collector row, the `vendor-notice`, `scan-result`, and Impact Report artifacts, and the composed heal prompt with the real `parse_code` diff Bright Data proposed — so it can be inspected without running the CLI. [`examples/README.md`](examples/README.md) traces each file back to the command or the live capture that produced it.
+
 ## Vendor coverage
 
 Blast Radius watches 10 curated first-party vendor sources. It can prove code usage for 3 of them — both numbers are always shown together, and the bigger one never stands in for the smaller.
@@ -240,11 +244,17 @@ Full boundary: [docs/product-contract.md](docs/product-contract.md).
 | `fixtures/` | Vendor notices and small repositories used by tests. |
 | `fixtures/heal/` | Real Bright Data healing responses, recorded once and replayed offline. |
 | `fixtures/watched/` | First-party notices for the watched vendors, with provenance for every excerpt. |
+| `examples/` | Committed structured output from every stage — see [Example output](#example-output). |
 | `test/` | Acceptance, browser, and focused rule tests. |
 | `docs/product-contract.md` | Product rules and MVP boundary. |
 | `docs/adr/` | The decisions behind the design, and why each one was made. |
+| `docs/ai-assistance.md` | Disclosure of how AI was used to build this. |
 | `CONTEXT.md` | Domain vocabulary and definitions. |
 | `tools/oxlint/anti-slop/` | Local anti-slop Oxlint plugin. |
+
+## AI assistance
+
+This project was built with Claude Code as a pair-programming tool throughout — implementation, tests, and documentation, issue by issue, under my direction and review. Full disclosure: [docs/ai-assistance.md](docs/ai-assistance.md).
 
 ## Development checks
 
