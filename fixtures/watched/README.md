@@ -5,19 +5,22 @@ but no repository matcher. Each one runs through exactly the same collection pat
 assertion gates as Slack, OpenAI and Cloudflare. None of them can produce an Impact, because
 none of them has a matcher.
 
-Every `excerpt` below was read off the vendor's own page on 19 August 2026 and is stored
-verbatim. If a page moves, replace the excerpt from the new page rather than editing the stored
-words to fit.
+Every fixture here is a **real capture**: the envelope written by that vendor's own live Bright
+Data collector on 19–20 August 2026, stored unedited. The `collector` field on each one names the
+collector that produced it, and `test/issue-13.acceptance.test.ts` asserts that no two watched
+fixtures share a collector. Nothing here was typed by hand.
 
-| File | Source | Excerpt provenance |
+Re-capture with `blast collect --live --vendor <name>` rather than editing the stored words to fit.
+
+| File | Source | Collector |
 |---|---|---|
-| `github-sbom.json` | [GitHub Changelog, 12 May 2026](https://github.blog/changelog/2026-05-12-synchronous-sbom-api-deprecated/) | The changelog's own deprecation sentence, verbatim. |
-| `shopify-checkout-configurations-webhook.json` | [Shopify developer changelog](https://shopify.dev/changelog/deprecation-of-checkoutandaccountsconfigurationsupdate-webhook) | The entry's removal sentence, verbatim except that the page's code backticks around the webhook name are dropped. |
-| `vercel-now-json.json` | [Vercel changelog](https://vercel.com/changelog/support-for-now-json-will-be-removed-on-march-31-2026) | The changelog sentence, verbatim including the ordinal "March 31st". |
-| `firebase-ml.json` | [Firebase ML docs](https://firebase.google.com/docs/ml) | The deprecation banner sentence, verbatim. |
-| `auth0-rules-and-hooks.json` | [Auth0 deprecations and migrations](https://auth0.com/docs/troubleshoot/product-lifecycle/deprecations-and-migrations) | The Rules and Hooks end-of-life sentence, verbatim. |
-| `hubspot-contact-lists-v1.json` | [HubSpot developer changelog](https://developers.hubspot.com/changelog/upcoming-sunset-v1-lists-api) | The sunset sentence, verbatim except that the page's inline link markup around the API name is dropped. |
-| `google-maps-heatmap-layer.json` | [Google Maps Platform deprecations](https://developers.google.com/maps/deprecations) | The Heatmap Layer entry's two-sentence description, verbatim. |
+| `github-sbom.json` | [GitHub Changelog, 12 May 2026](https://github.blog/changelog/2026-05-12-synchronous-sbom-api-deprecated/) | `c_mt0ftsnb1ns94s7t8f` |
+| `shopify-checkout-configurations-webhook.json` | [Shopify developer changelog](https://shopify.dev/changelog/deprecation-of-checkoutandaccountsconfigurationsupdate-webhook) | `c_mt0furjy2mtd59angp` |
+| `vercel-now-json.json` | [Vercel changelog](https://vercel.com/changelog/support-for-now-json-will-be-removed-on-march-31-2026) | `c_mt0fwofo1ey25692r6` |
+| `firebase-ml.json` | [Firebase ML docs](https://firebase.google.com/docs/ml?hl=en) | `c_mt0foc3t146u794rdf` |
+| `auth0-rules-and-hooks.json` | [Auth0 deprecations and migrations](https://auth0.com/docs/troubleshoot/product-lifecycle/deprecations-and-migrations) | `c_mt0gr9332a0zzz15xu` |
+| `hubspot-contact-lists-v1.json` | [HubSpot developer changelog](https://developers.hubspot.com/changelog/upcoming-sunset-v1-lists-api) | `c_mt0gc5om1xyjjujfsy` |
+| `google-maps-heatmap-layer.json` | [Google Maps Platform deprecations](https://developers.google.com/maps/deprecations?hl=en) | `c_mt0geakyat2ca4wh2` |
 
 ## What the deadline fields are doing
 
@@ -41,6 +44,8 @@ stay null.
    declare its `evidenceProximity`. Prefer `adjacent`; reach for `same-sentence` only when the
    vendor's own sentence puts qualifying material between the capability name and the lifecycle
    verb, and expect that choice to be reviewed. Four of the seven here need it.
-3. Add a fixture here with the verbatim excerpt and the vendor's own deadline wording.
+3. Build that source its own collector (`bdata scraper create`), add its ID to `.env`, and capture
+   the fixture with `blast collect --live --vendor <name>`. One collector holds one parse
+   template, so it cannot be shared with another source.
 4. Run `npm test`. The gates decide whether the source is admissible; do not loosen them to
    admit a page that does not qualify.

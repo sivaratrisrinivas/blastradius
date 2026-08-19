@@ -1,6 +1,6 @@
 {
   "vendor": "Firebase",
-  "sourceUrl": "https://firebase.google.com/docs/ml",
+  "sourceUrl": "https://firebase.google.com/docs/ml?hl=en",
   "collector": {
     "identity": "deterministic-fixture",
     "version": "fixture-v1"

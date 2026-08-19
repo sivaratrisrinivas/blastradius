@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { collectBrightDataVendorNotice, brightDataConfigFromEnvironment, loadEnvironmentFile } from "./collection/bright-data.js";
+import { collectBrightDataVendorNotice, brightDataConfigForCollector, brightDataConfigForVendor, loadEnvironmentFile } from "./collection/bright-data.js";
 import { collectVendorNotice } from "./collection/collect.js";
 import { brightDataHealDriver, recordedHealDriver, type CollectorHealDriver } from "./collection/bright-data-heal.js";
 import { detectCollectorHeal, rerunCollectorHeal, resolveCollectorHeal, runCollectorHeal } from "./collection/heal.js";
@@ -77,11 +77,11 @@ function refuseAutomaticApproval(args: string[]): void {
   }
 }
 
-function healDriver(args: string[]): CollectorHealDriver {
+function healDriver(args: string[], collectorId: string): CollectorHealDriver {
   const recordedPath = optionalOption(args, "--recorded");
   if (recordedPath !== undefined) return recordedHealDriver(recordedPath);
   loadEnvironmentFile(resolve(process.cwd(), ".env"));
-  return brightDataHealDriver(brightDataConfigFromEnvironment());
+  return brightDataHealDriver(brightDataConfigForCollector(collectorId));
 }
 
 /**
@@ -97,7 +97,7 @@ function healRerunCollection(args: string[], heal: CollectorHealArtifact): () =>
   const sourceUrl = heal.detected.sourceUrl;
   if (!vendor || !sourceUrl) throw new Error("a live rerun needs the detected vendor and curated source recorded on the heal");
   loadEnvironmentFile(resolve(process.cwd(), ".env"));
-  const config = brightDataConfigFromEnvironment();
+  const config = brightDataConfigForVendor(vendor);
   return () => collectBrightDataVendorNotice({ vendor, sourceUrl }, config);
 }
 
@@ -115,7 +115,7 @@ async function run(args: string[]): Promise<void> {
             if (!sourceUrl) throw new Error(`no curated source is configured for ${vendor}`);
             return { vendor, sourceUrl };
           })(),
-          brightDataConfigFromEnvironment()
+          brightDataConfigForVendor(vendorOption(option(args, "--vendor")))
         )
         : collectVendorNotice(option(args, "--fixture"));
       writeJson(outputPath, artifact);
@@ -200,7 +200,7 @@ async function run(args: string[]): Promise<void> {
     if (action === "run" || action === "approve" || action === "reject") {
       const healPath = option(args, "--heal");
       const stored = readJson(healPath);
-      const driver = healDriver(args);
+      const driver = healDriver(args, assertCollectorHealArtifact(stored).collector.identity);
       try {
         const heal = action === "run"
           ? await runCollectorHeal(stored, driver)

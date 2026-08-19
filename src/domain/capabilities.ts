@@ -138,7 +138,7 @@ const WATCHED_VENDORS: readonly WatchedVendor[] = [
     vendor: "Shopify",
     sourceUrl: "https://shopify.dev/changelog/deprecation-of-checkoutandaccountsconfigurationsupdate-webhook",
     canonicalIdentifier: "shopify.webhooks.checkout-and-accounts-configurations-update",
-    evidenceIdentifier: "checkout_and_accounts_configurations/update",
+    evidenceIdentifier: "checkout and accounts configurations",
     evidenceProximity: "same-sentence",
     matcher: null,
     acceptedIdentifiers: ["shopify.webhooks.checkout-and-accounts-configurations-update"],
@@ -158,7 +158,7 @@ const WATCHED_VENDORS: readonly WatchedVendor[] = [
   },
   {
     vendor: "Firebase",
-    sourceUrl: "https://firebase.google.com/docs/ml",
+    sourceUrl: "https://firebase.google.com/docs/ml?hl=en",
     canonicalIdentifier: "firebase.ml",
     evidenceIdentifier: "Firebase ML",
     evidenceProximity: "adjacent",
@@ -191,7 +191,7 @@ const WATCHED_VENDORS: readonly WatchedVendor[] = [
   },
   {
     vendor: "Google Maps Platform",
-    sourceUrl: "https://developers.google.com/maps/deprecations",
+    sourceUrl: "https://developers.google.com/maps/deprecations?hl=en",
     canonicalIdentifier: "google-maps.javascript.heatmap-layer",
     evidenceIdentifier: "Heatmap Layer",
     evidenceProximity: "same-sentence",

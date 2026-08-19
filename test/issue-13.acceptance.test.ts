@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { assertScanArtifact } from "../src/domain/artifacts.js";
+import { brightDataConfigForVendor, vendorCollectorEnvironmentName } from "../src/collection/bright-data.js";
 import { collectVendorNotice } from "../src/collection/collect.js";
 import { renderImpactReport } from "../src/report/render.js";
 import { scanLocalRepository } from "../src/scan/scan.js";
@@ -65,6 +66,35 @@ test("every watched source is a real first-party notice that passes the existing
 
   const watchedVendorNames = watchedVendors().map(vendor => vendor.vendor).sort();
   assert.deepEqual(collected.map(artifact => artifact.notice.vendor).sort(), watchedVendorNames);
+});
+
+test("every curated source has its own collector, because one collector holds one parse template", () => {
+  const environment: NodeJS.ProcessEnv = { BRIGHTDATA_API_KEY: "token", BRIGHTDATA_COLLECTOR_ID: "c_shared" };
+  for (const source of curatedSources()) {
+    environment[vendorCollectorEnvironmentName(source.vendor)] = `c_${source.vendor.toLowerCase().replaceAll(/[^a-z0-9]+/g, "")}`;
+  }
+
+  for (const source of curatedSources()) {
+    const config = brightDataConfigForVendor(source.vendor, environment);
+    assert.notEqual(config.collectorId, "c_shared", `${source.vendor} fell back to the shared collector`);
+    assert.equal(config.collectorId, environment[vendorCollectorEnvironmentName(source.vendor)]);
+  }
+
+  assert.equal(vendorCollectorEnvironmentName("Google Maps Platform"), "BRIGHTDATA_COLLECTOR_ID_GOOGLE_MAPS_PLATFORM");
+  const identifiers = curatedSources().map(source => vendorCollectorEnvironmentName(source.vendor));
+  assert.equal(new Set(identifiers).size, identifiers.length, "two vendors share one collector variable");
+});
+
+test("each watched fixture is a real capture from that vendor's own collector", () => {
+  const collectorIds = new Set<string>();
+  for (const fixture of watchedFixtures()) {
+    const artifact = collectVendorNotice(fixture);
+    const collector = artifact.collection?.collector.identity ?? "";
+    assert.match(collector, /^c_[a-z0-9]+$/, `${fixture} was not captured from a real Bright Data collector`);
+    collectorIds.add(collector);
+    assert.notEqual(artifact.collection?.retrievedAt, undefined);
+  }
+  assert.equal(collectorIds.size, watchedVendors().length, "watched fixtures must not share a collector");
 });
 
 test("faithful deadline wording survives collection, ordinals and partial dates included", () => {
@@ -140,7 +170,7 @@ test("a watched source contributes CollectorHealth and CollectorHeal evidence li
 
   const heal = JSON.parse(readFileSync(healPath, "utf8"));
   assert.equal(heal.detected.vendor, "Firebase");
-  assert.equal(heal.detected.sourceUrl, "https://firebase.google.com/docs/ml");
+  assert.equal(heal.detected.sourceUrl, "https://firebase.google.com/docs/ml?hl=en");
   assert.ok(heal.prompt.text.length > 0);
 });
 

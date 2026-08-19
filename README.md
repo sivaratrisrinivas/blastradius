@@ -198,7 +198,7 @@ The scan succeeds and reports no Impact. It names the reason: Firebase is a `Wat
 
 Both numbers print from `collect` and `scan` as well as from the report. A watched vendor never produces an Impact, so it never produces a report, and the disclosure has to appear somewhere a watched-only run can see it.
 
-`fixtures/watched/README.md` records where every excerpt came from.
+Every watched vendor has its own live Bright Data collector, and the fixtures in `fixtures/watched/` are the envelopes those collectors actually returned. Nothing there was typed by hand. `fixtures/watched/README.md` names the collector behind each one.
 
 ## The three provable vendor changes
 
@@ -351,9 +351,9 @@ node dist/src/cli.js report \
 
 `--vendor` accepts any of the ten curated vendors, watched and matched alike.
 
-One published Bright Data collector serves all of them. The trigger call carries the source URL, so adding a watched vendor means adding an entry to the allowlist, not building another collector.
+All ten vendors have been collected live. Each one has its own collector, because a collector holds one parse template and a template is written against one page structure. Pointing one collector at another vendor's page returns nothing usable, which is a thing this project learned the expensive way.
 
-Be clear about what has and has not been run live. The seven watched sources were read off the vendor pages by hand and stored as offline fixtures. Each one goes through the full collection and gate path in the test suite. None of them has been triggered live against Bright Data, because every live run spends credits. `blast collect --live --vendor Firebase` is the command that would do it.
+The per-vendor variables are listed in [docs/brightdata-collection.md](docs/brightdata-collection.md), along with the `bdata scraper create` recipe for building a new one.
 
 The adapter sends Bright Data only the selected curated public vendor URL.
 

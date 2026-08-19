@@ -1,12 +1,12 @@
 {
   "vendor": "Firebase",
-  "sourceUrl": "https://firebase.google.com/docs/ml",
-  "retrievedAt": "2026-08-19T00:00:00Z",
+  "sourceUrl": "https://firebase.google.com/docs/ml?hl=en",
+  "retrievedAt": "2026-08-19T18:59:06.277Z",
   "collector": {
-    "identity": "deterministic-fixture",
-    "version": "fixture-v1"
+    "identity": "c_mt0foc3t146u794rdf",
+    "version": "production"
   },
-  "content": "Firebase ML is deprecated and will be shut down on June 15, 2027.",
+  "content": "Firebase Machine Learning plat_ios plat_android plat_flutter Use machine learning in your apps to solve real-world problems. Firebase ML provides convenient APIs that help you use your custom TensorFlow Lite models in your mobile apps. This is a beta release of Firebase ML . This API might be changed in backward-incompatible ways and is not subject to any SLA or deprecation policy. Key capabilities Host and deploy custom models Use your own TensorFlow Lite models for on-device inference. Just deploy your model to Firebase, and we'll take care of hosting and serving it to your app. Firebase will dynamically serve the latest version of the model to your users, allowing you to regularly update them without having to push a new version of your app to users. When you use Firebase ML with Remote Config , you can serve different models to different user segments, and with A/B Testing , you can run experiments to find the best performing model (see the Apple and Android guides). ML Kit: Ready-to-use on-device models On June 3, 2020, we started offering ML Kit's on-device APIs through a new standalone SDK . Google Cloud APIs and custom model deployment will continue to be available through Firebase Machine Learning. If you're looking for pre-trained models that run on the device, check out ML Kit . ML Kit is available for iOS and Android, and has APIs for many use cases: Text recognition Image labeling Object detection and tracking Face detection and contour tracing Barcode scanning Language identification Translation Smart Reply Next steps Learn about using mobile-optimized custom models in your app.",
   "excerpt": "Firebase ML is deprecated and will be shut down on June 15, 2027.",
   "capabilityIdentifier": "firebase.ml",
   "changeType": "deprecation",

@@ -1,13 +1,13 @@
 {
   "vendor": "GitHub",
   "sourceUrl": "https://github.blog/changelog/2026-05-12-synchronous-sbom-api-deprecated/",
-  "retrievedAt": "2026-08-19T00:00:00Z",
+  "retrievedAt": "2026-08-19T18:58:07.987Z",
   "collector": {
-    "identity": "deterministic-fixture",
-    "version": "fixture-v1"
+    "identity": "c_mt0ftsnb1ns94s7t8f",
+    "version": "production"
   },
-  "content": "Following the recent release of the new Asynchronous SBOM REST API, the older, synchronous API is deprecated and slated for removal in six months, on November 13, 2026.",
-  "excerpt": "Following the recent release of the new Asynchronous SBOM REST API, the older, synchronous API is deprecated and slated for removal in six months, on November 13, 2026.",
+  "content": "Following the recent release of the new Asynchronous SBOM REST API , the older, synchronous API is deprecated and slated for removal in six months, on November 13, 2026. If your scripts or integrations are currently using the REST endpoint at /{owner}/{repo}/dependency-graph/sbom , please update them to use the new /{owner}/{repo}/dependency-graph/sbom/generate-report instead. This request will return a URL which you then poll for completion. Once the SBOM is computed, it will be cached and available for download, providing better performance and reliability than the previous method. Visit the API documentation for more details on the API usage.",
+  "excerpt": "Following the recent release of the new Asynchronous SBOM REST API , the older, synchronous API is deprecated and slated for removal in six months, on November 13, 2026.",
   "capabilityIdentifier": "github.dependency-graph.sbom.synchronous",
   "changeType": "deprecation",
   "deadlineOriginal": "November 13, 2026",

@@ -102,6 +102,31 @@ export function brightDataConfigFromEnvironment(environment: NodeJS.ProcessEnv =
   };
 }
 
+/**
+ * One collector holds one parse template, so each curated source needs its own collector. The
+ * per-vendor variable wins; `BRIGHTDATA_COLLECTOR_ID` remains the fallback for sources that share
+ * one. "Google Maps Platform" becomes BRIGHTDATA_COLLECTOR_ID_GOOGLE_MAPS_PLATFORM.
+ */
+export function vendorCollectorEnvironmentName(vendor: Vendor): string {
+  return `BRIGHTDATA_COLLECTOR_ID_${vendor.toUpperCase().replaceAll(/[^A-Z0-9]+/g, "_")}`;
+}
+
+function withCollectorId(config: BrightDataConfig, collectorId: string): BrightDataConfig {
+  if (!/^c_[A-Za-z0-9_-]+$/.test(collectorId)) throw new Error("Bright Data collector ID must start with c_");
+  return { ...config, collectorId };
+}
+
+export function brightDataConfigForVendor(vendor: Vendor, environment: NodeJS.ProcessEnv = process.env): BrightDataConfig {
+  const config = brightDataConfigFromEnvironment(environment);
+  const collectorId = environmentValue(environment, vendorCollectorEnvironmentName(vendor));
+  return collectorId === undefined ? config : withCollectorId(config, collectorId);
+}
+
+/** Heals must target the collector the drift was detected on, never the environment default. */
+export function brightDataConfigForCollector(collectorId: string, environment: NodeJS.ProcessEnv = process.env): BrightDataConfig {
+  return withCollectorId(brightDataConfigFromEnvironment(environment), collectorId);
+}
+
 export function loadEnvironmentFile(path: string): void {
   if (!existsSync(path)) return;
   const contents = readFileSync(path, "utf8");

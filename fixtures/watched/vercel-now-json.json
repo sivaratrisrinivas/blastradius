@@ -1,13 +1,13 @@
 {
   "vendor": "Vercel",
   "sourceUrl": "https://vercel.com/changelog/support-for-now-json-will-be-removed-on-march-31-2026",
-  "retrievedAt": "2026-08-19T00:00:00Z",
+  "retrievedAt": "2026-08-19T18:58:17.401Z",
   "collector": {
-    "identity": "deterministic-fixture",
-    "version": "fixture-v1"
+    "identity": "c_mt0fwofo1ey25692r6",
+    "version": "production"
   },
-  "content": "Support for the legacy now.json config file will be officially removed on March 31st, 2026.",
-  "excerpt": "Support for the legacy now.json config file will be officially removed on March 31st, 2026.",
+  "content": "Support for the legacy now.json config file will be officially removed on March 31st, 2026 . Migrate existing now.json files by renaming them to vercel.json, no other content changes are required. For more advanced use cases, try vercel.ts for programmatic project configuration. Learn more about configuring projects with vercel.json in the documentation .",
+  "excerpt": "Support for the legacy now.json config file will be officially removed on March 31st, 2026 . Migrate existing now.json files by renaming them to vercel.json, no other content changes are required.",
   "capabilityIdentifier": "vercel.config.now-json",
   "changeType": "removal",
   "deadlineOriginal": "March 31st, 2026",
