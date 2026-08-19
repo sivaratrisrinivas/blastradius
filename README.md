@@ -56,6 +56,7 @@ Blast Radius keeps a small vocabulary so that its output stays precise. Every on
 | `CodeMatch` | A repository file and line that local analysis connects to the capability. |
 | `Impact` | A `CapabilityChange` with at least one proven `CodeMatch`. |
 | `Analysis Limitation` | Related-looking code that the scanner cannot prove. |
+| `WatchedVendor` | A curated vendor source that is collected and health-checked but has no repository matcher, so it can never produce an Impact. |
 | `CollectorHealth` | A limited record of whether collection returned usable-shaped data. |
 | `CollectorHeal` | One attempt to fix a drifted collector, from detection through a human decision to a rerun. |
 
@@ -144,9 +145,64 @@ Open `/tmp/blast-radius-demo/impact-report.html` in a browser.
 
 The Slack demo proves one direct match at `src/slack-upload.ts:6`.
 
-## The three included vendor changes
+## Ten vendors watched, three capabilities provable
 
-The MVP has one narrow example for each curated vendor:
+Blast Radius watches 10 curated first-party sources. It can prove code for 3 of them.
+
+Both numbers are always shown together. The bigger one is never allowed to stand in for the smaller one.
+
+The 7 sources without a matcher are `WatchedVendor`s.
+
+A `WatchedVendor` is collected and checked exactly like the other three. Its notice goes through the same gates. Its collector reports the same health signals and can be healed the same way.
+
+What it cannot do is produce an Impact. There is no matcher for it, so a scan finds nothing and says so.
+
+That is the designed answer, not a missing feature. `test/issue-13.acceptance.test.ts` proves it stays that way.
+
+| Watched vendor | Capability | Deadline in the vendor's own words |
+| --- | --- | --- |
+| GitHub | Synchronous SBOM REST API | November 13, 2026 |
+| Shopify | `checkout_and_accounts_configurations/update` webhook | January 1, 2026 |
+| Vercel | `now.json` config file | March 31st, 2026 |
+| Firebase | Firebase ML | June 15, 2027 |
+| Auth0 | Rules and Hooks | November 18th, 2026 |
+| HubSpot | V1 Contact Lists API | April 30, 2026 |
+| Google Maps Platform | Heatmap Layer | unavailable as of May 2026 |
+
+Three of those deadlines are never turned into a normalized date.
+
+Vercel and Auth0 write the day as an ordinal, "31st" and "18th". Google Maps gives a month with no day. There is no unambiguous full date to record, so none is recorded. Filling one in would be an invented claim.
+
+### Why the collectors grew and the matchers did not
+
+A collector is one generated command pointed at a curated URL. Adding one is cheap.
+
+A matcher is hand-written analysis. It has to trace imports, aliases, and assignments, and attach vendor provenance to every hit. Roughly 650 lines currently cover three vendors.
+
+Twenty thin matchers would be quick to write and would manufacture exactly the unproved coverage the rule at the top of this file forbids.
+
+So the fleet grew and the matcher set did not, and the report publishes the gap instead of hiding it.
+
+### Seeing it work
+
+```bash
+node dist/src/cli.js collect \
+  --fixture fixtures/watched/firebase-ml.json \
+  --output /tmp/blast-radius-demo/firebase-notice.json
+node dist/src/cli.js scan fixtures/repository \
+  --collection /tmp/blast-radius-demo/firebase-notice.json \
+  --output /tmp/blast-radius-demo/firebase-scan.json
+```
+
+The scan succeeds and reports no Impact. It names the reason: Firebase is a `WatchedVendor` with no repository matcher, so this source can never produce one.
+
+Both numbers print from `collect` and `scan` as well as from the report. A watched vendor never produces an Impact, so it never produces a report, and the disclosure has to appear somewhere a watched-only run can see it.
+
+`fixtures/watched/README.md` records where every excerpt came from.
+
+## The three provable vendor changes
+
+The MVP has one narrow example for each matched vendor:
 
 | Vendor | Capability | Deadline | Fixture repository |
 | --- | --- | --- | --- |
@@ -292,6 +348,12 @@ node dist/src/cli.js report \
   --scan /tmp/blast-radius-demo/live-scan-result.json \
   --output /tmp/blast-radius-demo/live-impact-report.html
 ```
+
+`--vendor` accepts any of the ten curated vendors, watched and matched alike.
+
+One published Bright Data collector serves all of them. The trigger call carries the source URL, so adding a watched vendor means adding an entry to the allowlist, not building another collector.
+
+Be clear about what has and has not been run live. The seven watched sources were read off the vendor pages by hand and stored as offline fixtures. Each one goes through the full collection and gate path in the test suite. None of them has been triggered live against Bright Data, because every live run spends credits. `blast collect --live --vendor Firebase` is the command that would do it.
 
 The adapter sends Bright Data only the selected curated public vendor URL.
 
@@ -439,6 +501,7 @@ The current product intentionally supports:
 
 It does not claim:
 
+- a repository matcher for any watched vendor;
 - workspace support;
 - runtime-reachability analysis;
 - complete semantic understanding;
@@ -465,6 +528,7 @@ The scanner can miss code. It must not present unproved code as an Impact.
 | `src/cli.ts` | Exposes `collect`, `scan`, `report`, and `heal`. |
 | `fixtures/` | Vendor notices and small repositories used by tests. |
 | `fixtures/heal/` | Real Bright Data healing responses, recorded once and replayed offline. |
+| `fixtures/watched/` | First-party notices for the watched vendors, with provenance for every excerpt. |
 | `test/` | Acceptance, browser, and focused rule tests. |
 | `docs/product-contract.md` | Product rules and MVP boundary. |
 | `docs/adr/` | The decisions behind the design, and why each one was made. |

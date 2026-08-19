@@ -10,7 +10,7 @@ import {
   type VendorNoticeArtifact,
   type VendorNoticeCollection
 } from "../domain/artifacts.js";
-import { capabilityForSourceUrl, type Vendor } from "../domain/capabilities.js";
+import { curatedSourceForUrl, type Vendor } from "../domain/capabilities.js";
 import { collectorHealthError } from "../domain/collector-health.js";
 import { vendorNoticeArtifactFromCollection } from "./collect.js";
 
@@ -208,8 +208,8 @@ function collectionFromRecord(
   if (vendor !== request.vendor || sourceUrl !== request.sourceUrl) {
     throw new Error("Bright Data dataset record did not match the requested curated source");
   }
-  const capability = capabilityForSourceUrl(request.sourceUrl);
-  if (!capability || capability.vendor !== request.vendor) {
+  const curatedSource = curatedSourceForUrl(request.sourceUrl);
+  if (!curatedSource || curatedSource.vendor !== request.vendor) {
     throw new Error("Bright Data request must use a curated first-party source");
   }
   return {
@@ -235,8 +235,8 @@ export async function collectBrightDataVendorNotice(
   sleep: Sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
   clock: () => Date = () => new Date()
 ): Promise<VendorNoticeArtifact> {
-  const capability = capabilityForSourceUrl(request.sourceUrl);
-  if (!capability || capability.vendor !== request.vendor) {
+  const curatedSource = curatedSourceForUrl(request.sourceUrl);
+  if (!curatedSource || curatedSource.vendor !== request.vendor) {
     throw new Error("Bright Data request must use a curated first-party source");
   }
   const triggerUrl = `${normalizedApiBaseUrl(config.apiBaseUrl)}/dca/trigger?collector=${encodeURIComponent(config.collectorId)}&queue_next=1`;

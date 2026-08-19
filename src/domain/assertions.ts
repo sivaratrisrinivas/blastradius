@@ -1,4 +1,4 @@
-import { capabilityForSourceUrl, type CuratedCapability } from "./capabilities.js";
+import { curatedSourceForUrl, type CuratedSource } from "./capabilities.js";
 
 export interface CapabilityChangeCandidate {
   vendor: string;
@@ -71,16 +71,16 @@ function containsExplicitDate(value: string, isoDate: string): boolean {
   return value.includes(`${MONTH_NAMES[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`);
 }
 
-function hasRelatedLifecycleEvidence(value: string, capability: CuratedCapability): boolean {
+function hasRelatedLifecycleEvidence(value: string, source: CuratedSource): boolean {
   const sentences = value.trim().split(/(?<=[.!?])\s+/);
-  const escapedIdentifier = capability.evidenceIdentifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const relatedLifecycle = capability.matcher === "cloudflare-kv-legacy-routes"
+  const escapedIdentifier = source.evidenceIdentifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const relatedLifecycle = source.evidenceProximity === "same-sentence"
     ? new RegExp(`${escapedIdentifier}[^.!?]{0,220}\\s+${LIFECYCLE_LANGUAGE}`, "i")
     : new RegExp(`${escapedIdentifier}(?:${LIFECYCLE_SEPARATOR}${LIFECYCLE_BRIDGE_WORDS}){0,5}${LIFECYCLE_SEPARATOR}${LIFECYCLE_LANGUAGE}`, "i");
   return sentences.some((sentence, index) => {
     if (relatedLifecycle.test(sentence)) return true;
     const nextSentence = sentences[index + 1];
-    return sentence.includes(capability.evidenceIdentifier) && nextSentence !== undefined &&
+    return sentence.includes(source.evidenceIdentifier) && nextSentence !== undefined &&
       /^(?:it|this|the api)\b[\s\S]*\b(?:deprecat|sunset|shutdown|shut\s+down|remov)/i.test(nextSentence.trim());
   });
 }
@@ -91,19 +91,19 @@ function addFailure(failures: AssertionFailure[], gate: AssertionGate, message: 
 
 export function evaluateCapabilityChangeCandidate(candidate: CapabilityChangeCandidate): CandidateAssertionResult {
   const failures: AssertionFailure[] = [];
-  const curatedCapability = capabilityForSourceUrl(candidate.sourceUrl);
+  const curatedSource = curatedSourceForUrl(candidate.sourceUrl);
 
-  if (!curatedCapability || candidate.vendor !== curatedCapability.vendor) {
+  if (!curatedSource || candidate.vendor !== curatedSource.vendor) {
     addFailure(failures, "provenance", "source URL and vendor are not in the curated first-party allowlist");
   } else if (Number.isNaN(Date.parse(candidate.retrievedAt))) {
     addFailure(failures, "provenance", "retrievedAt is not a valid timestamp");
   }
 
-  if (curatedCapability && !hasRelatedLifecycleEvidence(candidate.excerpt, curatedCapability)) {
+  if (curatedSource && !hasRelatedLifecycleEvidence(candidate.excerpt, curatedSource)) {
     addFailure(failures, "lifecycle-language", "supporting excerpt does not tie explicit lifecycle language to the named capability");
   }
 
-  if (curatedCapability && !curatedCapability.acceptedIdentifiers.includes(candidate.capabilityIdentifier)) {
+  if (curatedSource && !curatedSource.acceptedIdentifiers.includes(candidate.capabilityIdentifier)) {
     addFailure(failures, "capability-identity", "candidate does not name the curated capability identifier");
   }
 
@@ -111,7 +111,7 @@ export function evaluateCapabilityChangeCandidate(candidate: CapabilityChangeCan
     addFailure(failures, "change-type", "change type is outside deprecation, sunset, shutdown, or removal");
   }
 
-  if (curatedCapability && !candidate.excerpt.includes(curatedCapability.evidenceIdentifier)) {
+  if (curatedSource && !candidate.excerpt.includes(curatedSource.evidenceIdentifier)) {
     addFailure(failures, "evidence", "supporting excerpt does not identify the affected capability");
   }
   if (candidate.excerpt.trim() === "") {

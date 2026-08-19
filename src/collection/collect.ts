@@ -16,7 +16,7 @@ import {
   healthyCollectorHealth
 } from "../domain/artifacts.js";
 import { evaluateCapabilityChangeCandidate, type CapabilityChangeCandidate } from "../domain/assertions.js";
-import { capabilityForSourceUrl, type Vendor } from "../domain/capabilities.js";
+import { curatedSourceForUrl, isVendor, type Vendor } from "../domain/capabilities.js";
 import { collectorHealthError } from "../domain/collector-health.js";
 
 const DEFAULT_FIXTURE_COLLECTOR: CollectorIdentity = { identity: "deterministic-fixture", version: "fixture-v1" };
@@ -33,7 +33,7 @@ function fixtureMetadata(value: JsonValue): FixtureMetadata {
   if (isRecord(value.collector) && isStringValue(value.collector.identity) && isStringValue(value.collector.version) && value.collector.identity.trim() !== "" && value.collector.version.trim() !== "") {
     collector = { identity: value.collector.identity, version: value.collector.version };
   }
-  const vendor: Vendor | undefined = value.vendor === "Slack" || value.vendor === "OpenAI" || value.vendor === "Cloudflare" ? value.vendor : undefined;
+  const vendor: Vendor | undefined = isStringValue(value.vendor) && isVendor(value.vendor) ? value.vendor : undefined;
   const sourceUrl = isStringValue(value.sourceUrl) && value.sourceUrl.trim() !== "" ? value.sourceUrl : undefined;
   const metadata: FixtureMetadata = { collector };
   if (vendor) metadata.vendor = vendor;
@@ -96,8 +96,8 @@ export function collectVendorNotice(fixturePath: string): VendorNoticeArtifact {
   }
   const vendor = asString(fixture.vendor, "vendor");
   const sourceUrl = asString(fixture.sourceUrl, "sourceUrl");
-  const sourceCapability = capabilityForSourceUrl(sourceUrl);
-  if (!sourceCapability || sourceCapability.vendor !== vendor) {
+  const curatedSource = curatedSourceForUrl(sourceUrl);
+  if (!curatedSource || curatedSource.vendor !== vendor) {
     throw new Error(`collection fixture is not an allowed first-party ${vendor} source`);
   }
   assertFixtureRequiredFields(fixture);
@@ -110,7 +110,7 @@ export function collectVendorNotice(fixturePath: string): VendorNoticeArtifact {
   const collection: VendorNoticeCollection = {
     schemaVersion: COLLECTION_SCHEMA_VERSION,
     kind: "vendor-notice-collection",
-    vendor: sourceCapability.vendor,
+    vendor: curatedSource.vendor,
     sourceUrl,
     retrievedAt,
     collector: fixture.collector === undefined
@@ -150,7 +150,7 @@ export function vendorNoticeArtifactFromCollection(collection: VendorNoticeColle
   };
   const assertion = evaluateCapabilityChangeCandidate(candidate);
 
-  const capability = capabilityForSourceUrl(collection.sourceUrl);
+  const curatedSource = curatedSourceForUrl(collection.sourceUrl);
   if (assertion.failures.some(failure => failure.gate === "provenance")) {
     throw new Error(`collection is not an allowed first-party ${collection.vendor} source`);
   }
@@ -158,7 +158,7 @@ export function vendorNoticeArtifactFromCollection(collection: VendorNoticeColle
     throw new Error(`collection candidate failed assertion gates: ${assertion.failures.map(failure => `${failure.gate}: ${failure.message}`).join("; ")}`);
   }
   if (!isChangeType(collection.changeType)) throw new Error("collection candidate has an unsupported change type");
-  if (!capability || capability.vendor !== collection.vendor || !capability.acceptedIdentifiers.includes(collection.capabilityIdentifier)) {
+  if (!curatedSource || curatedSource.vendor !== collection.vendor || !curatedSource.acceptedIdentifiers.includes(collection.capabilityIdentifier)) {
     throw new Error(`collection candidate is not the supported ${collection.vendor} capability`);
   }
 
@@ -166,9 +166,9 @@ export function vendorNoticeArtifactFromCollection(collection: VendorNoticeColle
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
     kind: "vendor-notice",
     collection,
-    notice: { vendor: capability.vendor, sourceUrl: collection.sourceUrl, retrievedAt: collection.retrievedAt, excerpt: collection.excerpt },
+    notice: { vendor: curatedSource.vendor, sourceUrl: collection.sourceUrl, retrievedAt: collection.retrievedAt, excerpt: collection.excerpt },
     capabilityChange: {
-      vendor: capability.vendor,
+      vendor: curatedSource.vendor,
       canonicalIdentifier: collection.capabilityIdentifier,
       changeType: collection.changeType,
       deadlineOriginal: collection.deadlineOriginal,

@@ -1,0 +1,15 @@
+{
+  "vendor": "HubSpot",
+  "sourceUrl": "https://developers.hubspot.com/changelog/upcoming-sunset-v1-lists-api",
+  "retrievedAt": "2026-08-19T00:00:00Z",
+  "collector": {
+    "identity": "deterministic-fixture",
+    "version": "fixture-v1"
+  },
+  "content": "The V1 Contact Lists API will sunset on April 30, 2026.",
+  "excerpt": "The V1 Contact Lists API will sunset on April 30, 2026.",
+  "capabilityIdentifier": "hubspot.contacts.lists-v1",
+  "changeType": "sunset",
+  "deadlineOriginal": "April 30, 2026",
+  "deadlineIso": "2026-04-30"
+}

@@ -1,0 +1,15 @@
+{
+  "vendor": "Firebase",
+  "sourceUrl": "https://firebase.google.com/docs/ml",
+  "retrievedAt": "2026-08-19T00:00:00Z",
+  "collector": {
+    "identity": "deterministic-fixture",
+    "version": "fixture-v1"
+  },
+  "content": "Firebase ML is deprecated and will be shut down on June 15, 2027.",
+  "excerpt": "Firebase ML is deprecated and will be shut down on June 15, 2027.",
+  "capabilityIdentifier": "firebase.ml",
+  "changeType": "deprecation",
+  "deadlineOriginal": "June 15, 2027",
+  "deadlineIso": "2027-06-15"
+}

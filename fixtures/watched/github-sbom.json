@@ -1,0 +1,15 @@
+{
+  "vendor": "GitHub",
+  "sourceUrl": "https://github.blog/changelog/2026-05-12-synchronous-sbom-api-deprecated/",
+  "retrievedAt": "2026-08-19T00:00:00Z",
+  "collector": {
+    "identity": "deterministic-fixture",
+    "version": "fixture-v1"
+  },
+  "content": "Following the recent release of the new Asynchronous SBOM REST API, the older, synchronous API is deprecated and slated for removal in six months, on November 13, 2026.",
+  "excerpt": "Following the recent release of the new Asynchronous SBOM REST API, the older, synchronous API is deprecated and slated for removal in six months, on November 13, 2026.",
+  "capabilityIdentifier": "github.dependency-graph.sbom.synchronous",
+  "changeType": "deprecation",
+  "deadlineOriginal": "November 13, 2026",
+  "deadlineIso": "2026-11-13"
+}

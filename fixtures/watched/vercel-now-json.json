@@ -1,0 +1,15 @@
+{
+  "vendor": "Vercel",
+  "sourceUrl": "https://vercel.com/changelog/support-for-now-json-will-be-removed-on-march-31-2026",
+  "retrievedAt": "2026-08-19T00:00:00Z",
+  "collector": {
+    "identity": "deterministic-fixture",
+    "version": "fixture-v1"
+  },
+  "content": "Support for the legacy now.json config file will be officially removed on March 31st, 2026.",
+  "excerpt": "Support for the legacy now.json config file will be officially removed on March 31st, 2026.",
+  "capabilityIdentifier": "vercel.config.now-json",
+  "changeType": "removal",
+  "deadlineOriginal": "March 31st, 2026",
+  "deadlineIso": null
+}

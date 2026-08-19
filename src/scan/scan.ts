@@ -9,7 +9,7 @@ import {
   type ScanArtifact,
   type VendorNoticeArtifact
 } from "../domain/artifacts.js";
-import { CLOUDFLARE_LEGACY_NAMESPACE_ROUTE_MARKER, type CapabilityMatcher } from "../domain/capabilities.js";
+import { CLOUDFLARE_LEGACY_NAMESPACE_ROUTE_MARKER, matcherForIdentifier } from "../domain/capabilities.js";
 
 const SOURCE_EXTENSIONS = new Map([
   [".js", ts.ScriptKind.JS],
@@ -621,19 +621,17 @@ function matchesCloudflareConfigFile(file: string, repositoryRoot: string, capab
   return { matches, limitations: [] };
 }
 
-function matcherFor(capabilityChange: CapabilityChange): CapabilityMatcher {
-  if (capabilityChange.vendor === "Slack") return "slack-files-upload";
-  if (capabilityChange.vendor === "OpenAI") return "openai-assistants";
-  return "cloudflare-kv-legacy-routes";
-}
-
 export function scanLocalRepository(repositoryPath: string, notice: VendorNoticeArtifact): ScanArtifact {
   const repositoryRoot = resolve(repositoryPath);
   if (!existsSync(resolve(repositoryRoot, "package.json"))) throw new Error("scan requires one repository root package.json");
 
-  const matcher = matcherFor(notice.capabilityChange);
-  const sourceMatcher = matcher === "slack-files-upload" ? matchesSlackFile : matcher === "openai-assistants" ? matchesOpenAIFile : matchesCloudflareSourceFile;
-  const sourceResults = repositoryFiles(repositoryRoot, SOURCE_EXTENSIONS).map(file => sourceMatcher(file, repositoryRoot, notice.capabilityChange));
+  // A WatchedVendor has no matcher, so nothing runs and nothing is proved. ADR 0002 makes that the
+  // designed outcome rather than a missing case.
+  const matcher = matcherForIdentifier(notice.capabilityChange.canonicalIdentifier, notice.capabilityChange.vendor);
+  const sourceMatcher = matcher === null ? null : matcher === "slack-files-upload" ? matchesSlackFile : matcher === "openai-assistants" ? matchesOpenAIFile : matchesCloudflareSourceFile;
+  const sourceResults = sourceMatcher === null
+    ? []
+    : repositoryFiles(repositoryRoot, SOURCE_EXTENSIONS).map(file => sourceMatcher(file, repositoryRoot, notice.capabilityChange));
   const configResults = matcher === "cloudflare-kv-legacy-routes"
     ? repositoryFiles(repositoryRoot, CONFIG_EXTENSIONS).map(file => matchesCloudflareConfigFile(file, repositoryRoot, notice.capabilityChange))
     : [];

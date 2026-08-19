@@ -1,5 +1,5 @@
 import { evaluateCapabilityChangeCandidate, explicitDeadlineIso } from "./assertions.js";
-import { capabilityForIdentifier, capabilityForSourceUrl, type Vendor } from "./capabilities.js";
+import { curatedSourceForIdentifier, curatedSourceForUrl, type Vendor } from "./capabilities.js";
 
 export const ARTIFACT_SCHEMA_VERSION = 1 as const;
 export const COLLECTION_SCHEMA_VERSION = 1 as const;
@@ -313,9 +313,9 @@ function parseNotice(value: JsonValue): VendorNotice {
   if (!isRecord(value)) throw new Error("notice must be an object");
   const vendorValue = asString(value.vendor, "notice.vendor");
   const sourceUrl = asString(value.sourceUrl, "notice.sourceUrl");
-  const capability = capabilityForSourceUrl(sourceUrl);
-  if (!capability || capability.vendor !== vendorValue) throw new Error(`notice.sourceUrl is not the curated ${vendorValue} source`);
-  const vendor = capability.vendor;
+  const curatedSource = curatedSourceForUrl(sourceUrl);
+  if (!curatedSource || curatedSource.vendor !== vendorValue) throw new Error(`notice.sourceUrl is not the curated ${vendorValue} source`);
+  const vendor = curatedSource.vendor;
   const retrievedAt = asString(value.retrievedAt, "notice.retrievedAt");
   if (Number.isNaN(Date.parse(retrievedAt))) throw new Error("notice.retrievedAt must be an ISO timestamp");
   const excerpt = asString(value.excerpt, "notice.excerpt");
@@ -380,16 +380,16 @@ function parseCollection(
   }
   const vendorValue = asString(value.vendor, "collection.vendor");
   const sourceUrl = asString(value.sourceUrl, "collection.sourceUrl");
-  const capability = capabilityForSourceUrl(sourceUrl);
-  if (!capability || capability.vendor !== vendorValue) throw new Error("collection.sourceUrl is not a curated first-party source");
-  const vendor = capability.vendor;
+  const curatedSource = curatedSourceForUrl(sourceUrl);
+  if (!curatedSource || curatedSource.vendor !== vendorValue) throw new Error("collection.sourceUrl is not a curated first-party source");
+  const vendor = curatedSource.vendor;
   const retrievedAt = asString(value.retrievedAt, "collection.retrievedAt");
   if (Number.isNaN(Date.parse(retrievedAt))) throw new Error("collection.retrievedAt must be an ISO timestamp");
   const collector = parseCollectorIdentity(value.collector);
   const content = asString(value.content, "collection.content");
   const excerpt = asString(value.excerpt, "collection.excerpt");
   const capabilityIdentifier = asString(value.capabilityIdentifier, "collection.capabilityIdentifier");
-  if (!capability.acceptedIdentifiers.includes(capabilityIdentifier)) throw new Error("collection.capabilityIdentifier is not curated");
+  if (!curatedSource.acceptedIdentifiers.includes(capabilityIdentifier)) throw new Error("collection.capabilityIdentifier is not curated");
   const changeType = asString(value.changeType, "collection.changeType");
   if (!isChangeType(changeType)) throw new Error("collection.changeType is not allowed");
   const deadlineOriginal = asString(value.deadlineOriginal, "collection.deadlineOriginal");
@@ -420,10 +420,10 @@ function parseCapabilityChange(value: JsonValue, notice?: VendorNotice): Capabil
   if (!isRecord(value)) throw new Error("capabilityChange must be an object");
   const vendorValue = asString(value.vendor, "capabilityChange.vendor");
   const canonicalIdentifier = asString(value.canonicalIdentifier, "capabilityChange.canonicalIdentifier");
-  const capability = capabilityForIdentifier(canonicalIdentifier, vendorValue);
-  if (!capability) throw new Error("capabilityChange does not name a curated capability");
-  const vendor = capability.vendor;
-  if (notice && (notice.vendor !== vendor || notice.sourceUrl !== capability.sourceUrl)) {
+  const curatedSource = curatedSourceForIdentifier(canonicalIdentifier, vendorValue);
+  if (!curatedSource) throw new Error("capabilityChange does not name a curated capability");
+  const vendor = curatedSource.vendor;
+  if (notice && (notice.vendor !== vendor || notice.sourceUrl !== curatedSource.sourceUrl)) {
     throw new Error("capabilityChange provenance does not match the VendorNotice");
   }
   const changeTypeValue = asString(value.changeType, "capabilityChange.changeType");
@@ -460,9 +460,12 @@ function parseCodeMatch(value: JsonValue, expectedChange?: CapabilityChange): Co
   if (!isRecord(value)) throw new Error("codeMatch must be an object");
   const vendorValue = asString(value.vendor, "codeMatch.vendor");
   const capabilityIdentifier = asString(value.capabilityIdentifier, "codeMatch.capabilityIdentifier");
-  const capability = capabilityForIdentifier(capabilityIdentifier, vendorValue);
-  if (!capability) throw new Error("codeMatch provenance does not match a curated capability");
-  const vendor = capability.vendor;
+  const curatedSource = curatedSourceForIdentifier(capabilityIdentifier, vendorValue);
+  if (!curatedSource) throw new Error("codeMatch provenance does not match a curated capability");
+  // A WatchedVendor has no matcher, so no CodeMatch against it can have been proved. Artifacts are
+  // read off disk, so this boundary refuses one even though the scanner would never emit it.
+  if (curatedSource.matcher === null) throw new Error("codeMatch names a WatchedVendor, which has no repository matcher and can never produce an Impact");
+  const vendor = curatedSource.vendor;
   if (expectedChange && (expectedChange.vendor !== vendor || expectedChange.canonicalIdentifier !== capabilityIdentifier)) {
     throw new Error("codeMatch provenance does not match the CapabilityChange");
   }
@@ -520,9 +523,9 @@ export function assertCollectorHealthArtifact(value: JsonValue): CollectorHealth
   if (value.vendor !== undefined || value.sourceUrl !== undefined) {
     const vendorValue = asString(value.vendor ?? null, "collector-health.vendor");
     sourceUrl = asString(value.sourceUrl ?? null, "collector-health.sourceUrl");
-    const capability = capabilityForSourceUrl(sourceUrl);
-    if (!capability || capability.vendor !== vendorValue) throw new Error("collector-health source is not a curated first-party source");
-    vendor = capability.vendor;
+    const curatedSource = curatedSourceForUrl(sourceUrl);
+    if (!curatedSource || curatedSource.vendor !== vendorValue) throw new Error("collector-health source is not a curated first-party source");
+    vendor = curatedSource.vendor;
   }
   const artifact: CollectorHealthArtifact = {
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
@@ -574,9 +577,9 @@ export function assertCollectorHealArtifact(value: JsonValue | CollectorHealArti
   if (record.detected.vendor !== undefined || record.detected.sourceUrl !== undefined) {
     const detectedVendorValue = asString(record.detected.vendor ?? null, "collector-heal.detected.vendor");
     detectedSourceUrl = asString(record.detected.sourceUrl ?? null, "collector-heal.detected.sourceUrl");
-    const capability = capabilityForSourceUrl(detectedSourceUrl);
-    if (!capability || capability.vendor !== detectedVendorValue) throw new Error("collector-heal detected source is not a curated first-party source");
-    detectedVendor = capability.vendor;
+    const curatedSource = curatedSourceForUrl(detectedSourceUrl);
+    if (!curatedSource || curatedSource.vendor !== detectedVendorValue) throw new Error("collector-heal detected source is not a curated first-party source");
+    detectedVendor = curatedSource.vendor;
   }
   const diagnosis = asString(record.diagnosis, "collector-heal.diagnosis");
 

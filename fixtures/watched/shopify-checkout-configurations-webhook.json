@@ -1,0 +1,15 @@
+{
+  "vendor": "Shopify",
+  "sourceUrl": "https://shopify.dev/changelog/deprecation-of-checkoutandaccountsconfigurationsupdate-webhook",
+  "retrievedAt": "2026-08-19T00:00:00Z",
+  "collector": {
+    "identity": "deterministic-fixture",
+    "version": "fixture-v1"
+  },
+  "content": "The checkout_and_accounts_configurations/update webhook, originally introduced in API version 2025-04 to help track updates to checkout and accounts configurations, will be removed on January 1, 2026.",
+  "excerpt": "The checkout_and_accounts_configurations/update webhook, originally introduced in API version 2025-04 to help track updates to checkout and accounts configurations, will be removed on January 1, 2026.",
+  "capabilityIdentifier": "shopify.webhooks.checkout-and-accounts-configurations-update",
+  "changeType": "removal",
+  "deadlineOriginal": "January 1, 2026",
+  "deadlineIso": "2026-01-01"
+}

@@ -5,7 +5,7 @@ import { collectBrightDataVendorNotice, brightDataConfigFromEnvironment, loadEnv
 import { collectVendorNotice } from "./collection/collect.js";
 import { brightDataHealDriver, recordedHealDriver, type CollectorHealDriver } from "./collection/bright-data-heal.js";
 import { detectCollectorHeal, rerunCollectorHeal, resolveCollectorHeal, runCollectorHeal } from "./collection/heal.js";
-import { curatedSourceUrlForVendor, type Vendor } from "./domain/capabilities.js";
+import { capabilitiesProvable, curatedSourceUrlForVendor, isVendor, matcherForIdentifier, curatedVendorCount, type Vendor } from "./domain/capabilities.js";
 import { assertCollectorHealArtifact, assertCollectorHealthArtifact, assertVendorNoticeArtifact, collectorLabel, HEAL_PROMPT_MAX_LENGTH, HEALTHY_COLLECTOR_HEALTH_MESSAGE, isRecord, parseJson, type CollectorHealArtifact, type CollectorHealthArtifact, type JsonValue, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
 import { CollectorHealthError } from "./domain/collector-health.js";
 import { renderImpactReport } from "./report/render.js";
@@ -28,8 +28,8 @@ function optionalOption(args: string[], name: string): string | undefined {
 }
 
 function vendorOption(value: string): Vendor {
-  if (value === "Slack" || value === "OpenAI" || value === "Cloudflare") return value;
-  throw new Error(`unsupported vendor ${value}; expected Slack, OpenAI, or Cloudflare`);
+  if (isVendor(value)) return value;
+  throw new Error(`${value} is not a curated vendor; ${curatedVendorCount()} vendors are watched and ${capabilitiesProvable()} capabilities are provable`);
 }
 
 function writeJson(path: string, value: CollectorHealArtifact | CollectorHealthArtifact | VendorNoticeArtifact | ScanArtifact): void {
@@ -47,6 +47,11 @@ function readJson(path: string): JsonValue {
 
 function collectorHealthSummary(): string {
   return HEALTHY_COLLECTOR_HEALTH_MESSAGE;
+}
+
+/** Both numbers, every time. ADR 0002 forbids letting the larger one stand in for the smaller. */
+function coverageSummary(): string {
+  return `Coverage: ${curatedVendorCount()} vendors watched, ${capabilitiesProvable()} capabilities provable.`;
 }
 
 function missingCollectorHealthSummary(): string {
@@ -119,7 +124,8 @@ async function run(args: string[]): Promise<void> {
         `Source: ${artifact.notice.sourceUrl}`,
         `Evidence: ${artifact.notice.excerpt}`,
         `Deadline: ${artifact.capabilityChange.deadlineOriginal} (${artifact.capabilityChange.deadlineIso ?? "not stated"})`,
-        collectorHealthSummary()
+        collectorHealthSummary(),
+        coverageSummary()
       ].join("\n") + "\n");
     } catch (error) {
       if (error instanceof CollectorHealthError) {
@@ -136,8 +142,11 @@ async function run(args: string[]): Promise<void> {
     const notice = readVendorNotice(option(args, "--collection"));
     const result = scanLocalRepository(repositoryPath, notice);
     writeJson(option(args, "--output"), result);
+    const watchedOnly = matcherForIdentifier(result.capabilityChange.canonicalIdentifier, result.capabilityChange.vendor) === null;
     const provenDetails = result.impact === null
-      ? "No Impact: no proven CodeMatch was found."
+      ? watchedOnly
+        ? `No Impact: ${result.capabilityChange.vendor} is a WatchedVendor with no repository matcher, so this source can never produce an Impact.`
+        : "No Impact: no proven CodeMatch was found."
       : [
         `Impact: ${result.capabilityChange.canonicalIdentifier}`,
         `Evidence: ${result.impact.codeMatches.map(match => match.evidence).join(" | ")}`,
@@ -155,6 +164,7 @@ async function run(args: string[]): Promise<void> {
       provenDetails,
       limitationDetails,
       result.collectorHealth ? collectorHealthSummary() : missingCollectorHealthSummary(),
+      coverageSummary(),
       "Privacy: Repository analysis stayed local; source, paths, snippets, and scan artifacts were not sent externally."
     ].join("\n") + "\n");
     return;

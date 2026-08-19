@@ -7,6 +7,7 @@ import {
   type JsonValue,
   type ScanArtifact
 } from "../domain/artifacts.js";
+import { capabilitiesProvable, curatedSourceForIdentifier, curatedVendorCount } from "../domain/capabilities.js";
 import { changedLinesWithContext, lineDiff } from "./line-diff.js";
 
 function escapeHtml(value: string): string {
@@ -20,12 +21,22 @@ function escapeHtml(value: string): string {
 }
 
 function displayCapability(identifier: string): string {
-  switch (identifier) {
-    case "slack.files.upload": return "files.upload";
-    case "openai.assistants": return "Assistants API";
-    case "cloudflare.workers.kv.legacy-namespace-routes": return "Workers KV legacy namespace routes";
-    default: return identifier;
-  }
+  return curatedSourceForIdentifier(identifier)?.displayName ?? identifier;
+}
+
+/**
+ * ADR 0002: the report states both numbers and never lets the larger one stand in for the smaller.
+ * Vendors watched counts curated first-party sources; capabilities provable counts the matchers.
+ */
+function coverage(): string {
+  return `<section class="evidence limitation-panel" data-section="coverage" aria-labelledby="coverage-heading">
+          <div class="section-heading"><span class="section-kicker">Boundary</span><h2 id="coverage-heading">Watched and provable are different numbers</h2></div>
+          <dl class="field-list">
+            <div><dt>Vendors watched</dt><dd data-coverage="vendors-watched">${curatedVendorCount()}</dd></div>
+            <div><dt>Capabilities provable</dt><dd data-coverage="capabilities-provable">${capabilitiesProvable()}</dd></div>
+          </dl>
+          <p class="muted">Blast Radius collects and health-checks ${curatedVendorCount()} curated first-party sources. Only ${capabilitiesProvable()} of them have a repository matcher, so only ${capabilitiesProvable()} capabilities can ever become an Impact. A WatchedVendor contributes CollectorHealth and CollectorHeal evidence and nothing else.</p>
+        </section>`;
 }
 
 function parseCodeDiff(diff: CollectorHealDiff): string {
@@ -380,6 +391,7 @@ export function renderImpactReport(value: JsonValue, now = new Date(), healValue
           <ul class="locations">${locations(scan)}</ul>
         </section>
         ${limitations(scan)}
+        ${coverage()}
         <section class="privacy" data-section="privacy-boundary" aria-labelledby="report-privacy-heading">
           <h2 id="report-privacy-heading">Repository analysis stayed local</h2>
           <p>Source, paths, snippets, and scan artifacts were not sent externally. Only public vendor material crossed the collection boundary.</p>

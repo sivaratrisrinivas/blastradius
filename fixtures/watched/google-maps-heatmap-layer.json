@@ -1,0 +1,15 @@
+{
+  "vendor": "Google Maps Platform",
+  "sourceUrl": "https://developers.google.com/maps/deprecations",
+  "retrievedAt": "2026-08-19T00:00:00Z",
+  "collector": {
+    "identity": "deterministic-fixture",
+    "version": "fixture-v1"
+  },
+  "content": "The Heatmap Layer functionality in the Maps JavaScript API is no longer supported due to low customer usage. This API was deprecated in May 2025 and is unavailable as of May 2026.",
+  "excerpt": "The Heatmap Layer functionality in the Maps JavaScript API is no longer supported due to low customer usage. This API was deprecated in May 2025 and is unavailable as of May 2026.",
+  "capabilityIdentifier": "google-maps.javascript.heatmap-layer",
+  "changeType": "deprecation",
+  "deadlineOriginal": "unavailable as of May 2026",
+  "deadlineIso": null
+}

@@ -1,0 +1,15 @@
+{
+  "vendor": "Auth0",
+  "sourceUrl": "https://auth0.com/docs/troubleshoot/product-lifecycle/deprecations-and-migrations",
+  "retrievedAt": "2026-08-19T00:00:00Z",
+  "collector": {
+    "identity": "deterministic-fixture",
+    "version": "fixture-v1"
+  },
+  "content": "After November 18th, 2026, Rules and Hooks will stop being executed and removed.",
+  "excerpt": "After November 18th, 2026, Rules and Hooks will stop being executed and removed.",
+  "capabilityIdentifier": "auth0.rules-and-hooks",
+  "changeType": "removal",
+  "deadlineOriginal": "November 18th, 2026",
+  "deadlineIso": null
+}
