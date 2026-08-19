@@ -12,6 +12,10 @@ _Avoid_: News item, discovery source
 An AI-interpreted lifecycle change constrained by assertion gates: an authoritative vendor source, explicit lifecycle language, a named capability identifier, and only a verbatim, unambiguous deadline when present. The gates constrain what AI may assert; they do not pretend to prove the meaning of prose.
 _Avoid_: Breaking change, AI finding
 
+**WatchedVendor**:
+A curated first-party source with a live collector but no repository matcher. It contributes CollectorHealth and CollectorHeal evidence and can never become an Impact.
+_Avoid_: Supported vendor, covered vendor
+
 **CodeMatch**:
 A file and line that deterministic local analysis connects to the changed capability with vendor provenance. Its evidence strength is `direct` or `alias-traced`, and its context is `source`, `test`, or `example`; unresolved dynamic usage is never a CodeMatch.
 _Avoid_: Possible usage, dependency presence
