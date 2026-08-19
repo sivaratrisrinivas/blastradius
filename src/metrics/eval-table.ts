@@ -157,10 +157,10 @@ export function renderEvalTableMarkdown(table: EvalTable): string {
     .map(gate => `${gate}: ${table.gateRejections.get(gate) ?? 0}`)
     .join(", ");
   const rows: ReadonlyArray<readonly [string, string, string]> = [
-    ["Call-site match precision", `${percentage(table.callSiteMatchPrecision)} (${fractionLabel(table.callSiteMatchPrecision)})`, "positive matcher fixtures — `test/issue-2/3/4/6/7.acceptance.test.ts`"],
-    ["False Impacts on the adversarial decoy", `${table.falseImpacts.falseImpacts} across ${table.falseImpacts.fixtureCount} adversarial fixtures`, "`client.files.upload()` and other vendor-shaped calls with no vendor provenance — `test/issue-3/4/6/7.acceptance.test.ts`"],
-    ["Limitation-disclosure rate", `${percentage(table.limitationDisclosure)} (${fractionLabel(table.limitationDisclosure)})`, "dynamic-access fixtures — `test/issue-3/4/6/7.acceptance.test.ts`"],
-    ["Assertion-gate rejection counts", gateBreakdown, "gate fixtures, by gate — `test/issue-14.acceptance.test.ts`, mirroring `test/issue-5.rules.test.ts`"],
+    ["Call-site match precision", `${percentage(table.callSiteMatchPrecision)} (${fractionLabel(table.callSiteMatchPrecision)})`, "positive matcher fixtures, proven in the Slack, OpenAI, and Cloudflare acceptance tests"],
+    ["False Impacts on the adversarial decoy", `${table.falseImpacts.falseImpacts} across ${table.falseImpacts.fixtureCount} adversarial fixtures`, "`client.files.upload()` and other vendor-shaped calls with no vendor provenance, proven in the same acceptance tests"],
+    ["Limitation-disclosure rate", `${percentage(table.limitationDisclosure)} (${fractionLabel(table.limitationDisclosure)})`, "dynamic-access fixtures, proven in the same acceptance tests"],
+    ["Assertion-gate rejection counts", gateBreakdown, "gate fixtures, one per gate — `test/issue-14.acceptance.test.ts`, mirroring `test/issue-5.rules.test.ts`"],
     ["Date-normalisation accuracy", `${percentage(table.dateNormalisation)} (${fractionLabel(table.dateNormalisation)})`, "exact / partial / relative / ranged deadline fixtures — `test/issue-5.rules.test.ts`"],
     ["Heal success rate", `${percentage(table.healSuccess)} (${fractionLabel(table.healSuccess)})`, "healthy and failed rerun fixtures — `test/issue-12.acceptance.test.ts`"]
   ];

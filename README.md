@@ -254,10 +254,10 @@ This table is not typed by hand. `npm run metrics` re-runs the real scanner, ass
 
 | Metric | Result | Source |
 | --- | --- | --- |
-| Call-site match precision | 100% (14/14) | positive matcher fixtures — `test/issue-2/3/4/6/7.acceptance.test.ts` |
-| False Impacts on the adversarial decoy | 0 across 6 adversarial fixtures | `client.files.upload()` and other vendor-shaped calls with no vendor provenance — `test/issue-3/4/6/7.acceptance.test.ts` |
-| Limitation-disclosure rate | 100% (9/9) | dynamic-access fixtures — `test/issue-3/4/6/7.acceptance.test.ts` |
-| Assertion-gate rejection counts | provenance: 1, lifecycle-language: 2, capability-identity: 1, change-type: 1, evidence: 1, deadline: 2 | gate fixtures, by gate — `test/issue-14.acceptance.test.ts`, mirroring `test/issue-5.rules.test.ts` |
+| Call-site match precision | 100% (14/14) | positive matcher fixtures, proven in the Slack, OpenAI, and Cloudflare acceptance tests |
+| False Impacts on the adversarial decoy | 0 across 6 adversarial fixtures | `client.files.upload()` and other vendor-shaped calls with no vendor provenance, proven in the same acceptance tests |
+| Limitation-disclosure rate | 100% (9/9) | dynamic-access fixtures, proven in the same acceptance tests |
+| Assertion-gate rejection counts | provenance: 1, lifecycle-language: 2, capability-identity: 1, change-type: 1, evidence: 1, deadline: 2 | gate fixtures, one per gate — `test/issue-14.acceptance.test.ts`, mirroring `test/issue-5.rules.test.ts` |
 | Date-normalisation accuracy | 100% (6/6) | exact / partial / relative / ranged deadline fixtures — `test/issue-5.rules.test.ts` |
 | Heal success rate | 50% (1/2) | healthy and failed rerun fixtures — `test/issue-12.acceptance.test.ts` |
 
