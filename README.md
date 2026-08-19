@@ -36,18 +36,9 @@ This distinction is the whole product in miniature.
 
 > Blast Radius may miss something it cannot prove; it must never present something it cannot prove as an Impact.
 
-Think of an Impact as a claim that needs two receipts:
-
-- The vendor notice proves what changed.
-- The local scan proves where the capability is used.
-
-If either receipt is missing, Blast Radius keeps the result out of the Impact list.
-
-The product therefore prefers an incomplete answer over a confident-looking answer that cannot be checked.
+An Impact needs two receipts: the vendor notice proves what changed, and the local scan proves where the capability is used. If either is missing, Blast Radius keeps the result out of the Impact list — an incomplete answer over a confident-looking one that can't be checked.
 
 ## The words the product uses
-
-Blast Radius keeps a small vocabulary so that its output stays precise. Every one of these words means one thing, in the code and in the report:
 
 | Term | Plain-English meaning |
 | --- | --- |
@@ -60,13 +51,9 @@ Blast Radius keeps a small vocabulary so that its output stays precise. Every on
 | `CollectorHealth` | A limited record of whether collection returned usable-shaped data. |
 | `CollectorHeal` | One attempt to fix a drifted collector, from detection through a human decision to a rerun. |
 
-`CodeMatch` records carry evidence strength: `direct` or `alias-traced`.
-
-They also carry context: `source`, `test`, or `example`.
+Full definitions live in [CONTEXT.md](CONTEXT.md).
 
 ## How the workflow works
-
-The normal workflow has three commands:
 
 ```text
 blast collect  ->  VendorNotice + CapabilityChange
@@ -74,35 +61,9 @@ blast scan     ->  CodeMatches + Analysis Limitations
 blast report   ->  local HTML Impact Report
 ```
 
-There is a fourth command, `blast heal`, but it is not part of the normal path. It only appears when collection detects that a collector has drifted, and it is described under [Optional collector healing](#optional-collector-healing).
+`collect` turns one official vendor page into a stored, gated JSON artifact. `scan` reads that notice and inspects one local repository with AST analysis, config parsing, and literal endpoint matching, producing exact `file:line` matches plus separately recorded Analysis Limitations for anything it can't prove. `report` renders the result as a local HTML file; with no proven CodeMatch, there is no Impact and no confirmed report.
 
-### 1. `collect` checks the notice
-
-Collection turns public vendor material into a stored JSON artifact.
-
-The artifact keeps the source URL, retrieval time, smallest useful excerpt, capability identifier, change type, and original deadline wording.
-
-The included demo uses saved fixtures. That makes the workflow deterministic and keeps the repository offline.
-
-An optional live path can use a published Bright Data Scraper Studio collector. It is opt-in and receives only the selected public vendor URL.
-
-### 2. `scan` checks the repository locally
-
-The scanner reads the stored notice and inspects one local JavaScript or TypeScript repository.
-
-It uses AST analysis, structured configuration parsing, and literal endpoint matching.
-
-It writes exact relative file paths and line numbers for proven matches.
-
-It writes unresolved related code separately, with a plain-English reason.
-
-### 3. `report` explains the result
-
-The report is generated locally as an HTML file.
-
-It shows the notice, capability change, deadline status, proven CodeMatches, and Analysis Limitations in separate sections.
-
-If there is no proven CodeMatch, the scan has no Impact and `report` does not create a confirmed Impact report.
+A fourth command, `blast heal`, only appears when `collect` detects a drifted collector — see [Optional collector healing](#optional-collector-healing).
 
 ## Quick start
 
@@ -141,23 +102,21 @@ node dist/src/cli.js report \
   --output /tmp/blast-radius-demo/impact-report.html
 ```
 
-Open `/tmp/blast-radius-demo/impact-report.html` in a browser.
+Open `/tmp/blast-radius-demo/impact-report.html` in a browser. The Slack demo proves one direct match at `src/slack-upload.ts:6`.
 
-The Slack demo proves one direct match at `src/slack-upload.ts:6`.
+Two more end-to-end examples ship with the repo: swap `fixtures/openai-notice.json` + `fixtures/repository-openai`, or `fixtures/cloudflare-kv-notice.json` + `fixtures/repository-cloudflare`, into the same three commands.
 
-## Ten vendors watched, three capabilities provable
+## Vendor coverage
 
-Blast Radius watches 10 curated first-party sources. It can prove code for 3 of them.
+Blast Radius watches 10 curated first-party vendor sources. It can prove code usage for 3 of them — both numbers are always shown together, and the bigger one never stands in for the smaller.
 
-Both numbers are always shown together. The bigger one is never allowed to stand in for the smaller one.
+| Matched vendor | Capability | Deadline | Source |
+| --- | --- | --- | --- |
+| Slack | `files.upload` | November 12, 2025 | [changelog](https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/) |
+| OpenAI | Assistants API | August 26, 2026 | [migration guide](https://developers.openai.com/api/docs/assistants/migration) |
+| Cloudflare | Legacy Workers KV namespace routes | October 15, 2026 | [changelog](https://developers.cloudflare.com/changelog/post/2026-07-15-kv-legacy-namespace-routes-deprecation/) |
 
-The 7 sources without a matcher are `WatchedVendor`s.
-
-A `WatchedVendor` is collected and checked exactly like the other three. Its notice goes through the same gates. Its collector reports the same health signals and can be healed the same way.
-
-What it cannot do is produce an Impact. There is no matcher for it, so a scan finds nothing and says so.
-
-That is the designed answer, not a missing feature. `test/issue-13.acceptance.test.ts` proves it stays that way.
+The other 7 are `WatchedVendor`s: collected and health-checked exactly like the three above, but with no repository matcher, so a scan of one always reports no Impact and says why. `test/issue-13.acceptance.test.ts` proves that stays true.
 
 | Watched vendor | Capability | Deadline in the vendor's own words |
 | --- | --- | --- |
@@ -169,80 +128,9 @@ That is the designed answer, not a missing feature. `test/issue-13.acceptance.te
 | HubSpot | V1 Contact Lists API | April 30, 2026 |
 | Google Maps Platform | Heatmap Layer | unavailable as of May 2026 |
 
-Three of those deadlines are never turned into a normalized date.
+Three of those deadlines (Vercel, Auth0, Google Maps) are written as an ordinal day or a bare month, so none is normalized to an ISO date — inventing one would be a claim the source doesn't support.
 
-Vercel and Auth0 write the day as an ordinal, "31st" and "18th". Google Maps gives a month with no day. There is no unambiguous full date to record, so none is recorded. Filling one in would be an invented claim.
-
-### Why the collectors grew and the matchers did not
-
-A collector is one generated command pointed at a curated URL. Adding one is cheap.
-
-A matcher is hand-written analysis. It has to trace imports, aliases, and assignments, and attach vendor provenance to every hit. Roughly 650 lines currently cover three vendors.
-
-Twenty thin matchers would be quick to write and would manufacture exactly the unproved coverage the rule at the top of this file forbids.
-
-So the fleet grew and the matcher set did not, and the report publishes the gap instead of hiding it.
-
-### Seeing it work
-
-```bash
-node dist/src/cli.js collect \
-  --fixture fixtures/watched/firebase-ml.json \
-  --output /tmp/blast-radius-demo/firebase-notice.json
-node dist/src/cli.js scan fixtures/repository \
-  --collection /tmp/blast-radius-demo/firebase-notice.json \
-  --output /tmp/blast-radius-demo/firebase-scan.json
-```
-
-The scan succeeds and reports no Impact. It names the reason: Firebase is a `WatchedVendor` with no repository matcher, so this source can never produce one.
-
-Both numbers print from `collect` and `scan` as well as from the report. A watched vendor never produces an Impact, so it never produces a report, and the disclosure has to appear somewhere a watched-only run can see it.
-
-Every watched vendor has its own live Bright Data collector, and the fixtures in `fixtures/watched/` are the envelopes those collectors actually returned. Nothing there was typed by hand. `fixtures/watched/README.md` names the collector behind each one.
-
-## The three provable vendor changes
-
-The MVP has one narrow example for each matched vendor:
-
-| Vendor | Capability | Deadline | Fixture repository |
-| --- | --- | --- | --- |
-| Slack | `files.upload` | November 12, 2025 | `fixtures/repository` |
-| OpenAI | Assistants API | August 26, 2026 | `fixtures/repository-openai` |
-| Cloudflare | Legacy Workers KV namespace routes | October 15, 2026 | `fixtures/repository-cloudflare` |
-
-Each notice comes from a first-party source:
-
-- [Slack changelog](https://docs.slack.dev/changelog/2024-04-a-better-way-to-upload-files-is-here-to-stay/)
-- [OpenAI Assistants migration guide](https://developers.openai.com/api/docs/assistants/migration)
-- [Cloudflare KV routes changelog](https://developers.cloudflare.com/changelog/post/2026-07-15-kv-legacy-namespace-routes-deprecation/)
-
-The other examples use the same three commands as the Slack example.
-
-```bash
-node dist/src/cli.js collect \
-  --fixture fixtures/openai-notice.json \
-  --output /tmp/blast-radius-demo/openai-notice.json
-node dist/src/cli.js scan fixtures/repository-openai \
-  --collection /tmp/blast-radius-demo/openai-notice.json \
-  --output /tmp/blast-radius-demo/openai-scan.json
-node dist/src/cli.js report \
-  --scan /tmp/blast-radius-demo/openai-scan.json \
-  --output /tmp/blast-radius-demo/openai-impact-report.html
-
-node dist/src/cli.js collect \
-  --fixture fixtures/cloudflare-kv-notice.json \
-  --output /tmp/blast-radius-demo/cloudflare-notice.json
-node dist/src/cli.js scan fixtures/repository-cloudflare \
-  --collection /tmp/blast-radius-demo/cloudflare-notice.json \
-  --output /tmp/blast-radius-demo/cloudflare-scan.json
-node dist/src/cli.js report \
-  --scan /tmp/blast-radius-demo/cloudflare-scan.json \
-  --output /tmp/blast-radius-demo/cloudflare-impact-report.html
-```
-
-For Cloudflare, the scanner recognizes the old `/accounts/{account_id}/workers/namespaces/*` route.
-
-It deliberately does not match the replacement `/storage/kv/namespaces/*` route.
+A collector is a generated command pointed at one curated URL; a matcher is hand-written analysis that traces imports, aliases, and assignments and attaches vendor provenance to every hit. Collectors are cheap to add, matchers are not (roughly 650 lines currently cover three vendors), so the fleet of collectors grew and the matcher set did not — the report publishes that gap instead of hiding it. Every vendor has its own live Bright Data collector; `fixtures/watched/README.md` names the one behind each fixture.
 
 ## Eval table
 
@@ -265,274 +153,75 @@ This table is not typed by hand. `npm run metrics` re-runs the real scanner, ass
 
 Run `npm run metrics` after changing a matcher, a gate, or a fixture to keep this table current. `test/issue-14.acceptance.test.ts` fails if the table in this file falls out of sync with what the suite currently proves.
 
-## Why a notice is allowed to become a change
+## Why the product trusts what it publishes
 
-Collection applies deterministic assertion gates to the extracted result.
+Collection applies five deterministic assertion gates to every extracted notice: the source must come from the curated first-party allowlist, contain a verbatim excerpt with explicit lifecycle language naming the capability, use a supported change type (deprecation, sunset, shutdown, removal), and preserve the original deadline wording — `deadline_iso` is populated only for one complete, unambiguous date. A candidate that fails a gate can stay around for diagnostic review; it can never become an accepted `CapabilityChange` or an Impact.
 
-These gates do not prove that a machine understood every sentence. They constrain what the product is allowed to claim.
+Scanning follows the same discipline in code. It resolves the receiver or literal to the expected vendor client — a `WebClient` imported from `@slack/web-api` for Slack, a `beta.assistants.create` call on an `openai`-imported client for OpenAI, exact legacy KV route literals for Cloudflare — and traces same-file imports, aliases, destructuring, and assignment chains, recording the exact file, line, and source text. Comments, strings, unrelated identifiers, shadowed or reassigned bindings, and unsupported dynamic access never become matches; they surface as an `Analysis Limitation` instead, e.g. `slack[method](payload)`, where the scanner sees something related but can't prove which capability runs.
 
-The source must:
+Every Impact carries a deadline state of `upcoming`, `past`, or `date-not-stated`, using an injected clock so tests don't depend on today's date; the original vendor wording is always kept alongside it.
 
-1. Belong to the curated first-party vendor allowlist.
-2. Contain a verbatim excerpt with explicit lifecycle language.
-3. Name the affected capability in that excerpt.
-4. Use a supported change type: deprecation, sunset, shutdown, or removal.
-5. Preserve the original deadline wording.
+Collector health is checked against three narrow signals — zero results, required-field collapse, schema failure — and a pass means only that those three checks succeeded, not that the extracted content is semantically correct.
 
-`deadline_iso` is populated only when the notice gives one complete, unambiguous date.
-
-The product does not invent a day from a month, a year from a relative phrase, or precision from a date range.
-
-A candidate that fails a gate may remain available for diagnostic review. It cannot become an accepted `CapabilityChange` or an Impact.
-
-## Why code becomes a match, or does not
-
-The scanner does not ask whether a package name merely appears in the repository.
-
-It follows a narrow chain of evidence:
-
-1. Find the vendor-specific capability identifier.
-2. Resolve the receiver or literal to the expected vendor source.
-3. Confirm the access pattern is supported.
-4. Record the exact file, line, and source text.
-
-For Slack, a receiver must resolve to a `WebClient` imported from `@slack/web-api`.
-
-For OpenAI, the scanner proves `beta.assistants.create` calls whose receiver resolves to an OpenAI client imported from `openai` or loaded with `require("openai")`.
-
-For Cloudflare, it proves exact legacy Workers KV route literals in source code and supported JSON or TOML configuration values.
-
-Same-file imports, destructuring, aliases, and assignment chains can be traced when the evidence remains transparent.
-
-Comments, strings, unrelated identifiers, similarly named clients, shadowed bindings, reassigned bindings, and unsupported dynamic access do not become matches.
-
-## What an Analysis Limitation means
-
-An Analysis Limitation is not a weaker Impact.
-
-It is a visible statement that the scanner found something related but could not establish the required proof.
-
-Examples include:
-
-```ts
-slack[method](payload);
-slack.files[method](payload);
-```
-
-The analyzer cannot know which capability those expressions select.
-
-An unsupported cross-file alias is also kept unresolved.
-
-The scan still succeeds and stores the file, line, and reason under `limitations`.
-
-A repository with only limitations has no Impact.
-
-This is how the product avoids turning uncertainty into a user-facing claim.
-
-## Deadline behavior
-
-Every Impact has one of three deadline states:
-
-- `upcoming`
-- `past`
-- `date-not-stated`
-
-The report always keeps the original vendor wording.
-
-The report clock is injected, so tests and demonstrations do not depend on the machine's current date.
-
-If the source has no exact full date, the report says that the date was not stated.
+Full rules: [docs/product-contract.md](docs/product-contract.md).
 
 ## Optional live Bright Data collection
 
-The normal demo uses local fixtures. The live path is an optional proof that a real custom Scraper Studio collector can produce the same collection shape.
-
-Put credentials and a published collector ID in the ignored root `.env` file:
+The default demo uses local fixtures and needs no credentials. An opt-in live path proves a real Scraper Studio collector produces the same shape of data.
 
 ```dotenv
 BRIGHTDATA_API_KEY=your-api-token
 BRIGHTDATA_COLLECTOR_ID=c_your-published-collector
 ```
 
-Run the live path explicitly:
-
 ```bash
 npm run build
-node dist/src/cli.js collect \
-  --live \
-  --vendor Slack \
-  --output /tmp/blast-radius-demo/live-vendor-notice.json
-node dist/src/cli.js scan fixtures/repository \
-  --collection /tmp/blast-radius-demo/live-vendor-notice.json \
-  --output /tmp/blast-radius-demo/live-scan-result.json
-node dist/src/cli.js report \
-  --scan /tmp/blast-radius-demo/live-scan-result.json \
-  --output /tmp/blast-radius-demo/live-impact-report.html
+node dist/src/cli.js collect --live --vendor Slack --output /tmp/blast-radius-demo/live-vendor-notice.json
 ```
 
-`--vendor` accepts any of the ten curated vendors, watched and matched alike.
+`--vendor` accepts any of the 10 curated vendors. Each has its own collector — one collector holds one parse template, written for one page's structure, so pointing one at another vendor's page returns nothing usable. The adapter sends Bright Data only the selected public vendor URL; it never sends repository contents.
 
-All ten vendors have been collected live. Each one has its own collector, because a collector holds one parse template and a template is written against one page structure. Pointing one collector at another vendor's page returns nothing usable, which is a thing this project learned the expensive way.
-
-The per-vendor variables are listed in [docs/brightdata-collection.md](docs/brightdata-collection.md), along with the `bdata scraper create` recipe for building a new one.
-
-The adapter sends Bright Data only the selected curated public vendor URL.
-
-It never sends repository source, paths, snippets, symbols, CodeMatches, or scan artifacts.
-
-Run `npm run test:brightdata` for the narrow live contract checks. The collection check is skipped unless both environment values are configured, and the healing check needs a further opt-in described below.
-
-See [docs/brightdata-collection.md](docs/brightdata-collection.md) for the collector output details.
-
-## Collector health: detecting drift without pretending to prove correctness
-
-Collectors can fail in ways that look valid.
-
-Blast Radius therefore records only three limited health signals:
-
-- zero results
-- required-field collapse
-- schema failure
-
-If one signal appears, `collect` writes a `collector-health` diagnostic, exits non-zero, and withholds that output from scanning and reporting.
-
-A healthy record means only that those three checks passed.
-
-It does not prove semantic correctness, completeness, or guaranteed scraper behavior.
+Run `npm run test:brightdata` for the live contract checks (skipped without credentials). Per-vendor variables and the collector-creation recipe: [docs/brightdata-collection.md](docs/brightdata-collection.md).
 
 ## Optional collector healing
 
-Healing is a trust workflow underneath the main notice-to-code workflow. It drives Bright Data's own self-healing endpoint, so the collector's template is rewritten by the vendor's AI rather than renamed locally.
-
-It follows this sequence:
+When `collect` detects collector drift, `blast heal` drives Bright Data's own self-healing endpoint through a human-approval gate — the vendor's AI rewrites the template, not a local guess:
 
 ```text
 detect -> compose prompt -> heal -> await approval -> approve or reject -> healthy rerun
 ```
 
-The collector keeps running its current template until a person explicitly approves the proposal. `--auto-approve` and `--auto-save` are not on the product path at all: the CLI refuses both.
-
-Compose the heal prompt from a stored health failure. The prompt is built from the detected signal, not typed by hand — it names the field that collapsed and, given a previous healthy notice, the value that field last held:
+The collector keeps running its current template until a person explicitly approves the proposal; `--auto-approve` and `--auto-save` are refused everywhere in the CLI. A rejected proposal leaves the collector exactly as it was. An approved one reruns and either reports healthy or, if the collector drifts again, fails honestly rather than claiming success.
 
 ```bash
-node dist/src/cli.js heal detect \
-  --diagnostic /tmp/blast-radius-demo/collector-health.json \
-  --last-known-good /tmp/blast-radius-demo/vendor-notice.json \
-  --output /tmp/blast-radius-demo/heal-detected.json
+node dist/src/cli.js heal detect --diagnostic <collector-health.json> --last-known-good <last-good-notice.json> --output heal-detected.json
+node dist/src/cli.js heal run --heal heal-detected.json --output heal-gated.json
+node dist/src/cli.js heal approve --heal heal-gated.json --output heal-approved.json
+node dist/src/cli.js heal rerun --heal heal-approved.json --fixture fixtures/collector-health/healed-rerun.json --output heal-rerun.json
 ```
 
-Send it to Bright Data and stop at the approval gate. This takes two to three minutes and spends credits:
-
-```bash
-node dist/src/cli.js heal run \
-  --heal /tmp/blast-radius-demo/heal-detected.json \
-  --output /tmp/blast-radius-demo/heal-gated.json
-```
-
-Add `--recorded fixtures/heal/awaiting-approval.progress.json` to replay a captured response instead. The artifact then records `heal.source: "recorded"`, and the report says so, so replayed evidence is never shown as a live call.
-
-Approve or reject the proposed template. Rejecting leaves the collector exactly as it was:
-
-```bash
-node dist/src/cli.js heal approve \
-  --heal /tmp/blast-radius-demo/heal-gated.json \
-  --output /tmp/blast-radius-demo/heal-approved.json
-
-node dist/src/cli.js heal reject \
-  --heal /tmp/blast-radius-demo/heal-gated.json \
-  --output /tmp/blast-radius-demo/heal-rejected.json
-```
-
-Run the healthy rerun:
-
-```bash
-node dist/src/cli.js heal rerun \
-  --heal /tmp/blast-radius-demo/heal-approved.json \
-  --fixture fixtures/collector-health/healed-rerun.json \
-  --output /tmp/blast-radius-demo/heal-rerun.json
-```
-
-`--fixture` reruns against a stored notice. Swap it for `--live` to re-collect from the curated source the drift was detected on, using the same Bright Data credentials as `collect --live`:
-
-```bash
-node dist/src/cli.js heal rerun \
-  --heal /tmp/blast-radius-demo/heal-approved.json \
-  --live \
-  --output /tmp/blast-radius-demo/heal-rerun.json
-```
-
-A live rerun needs the vendor and source URL recorded on the heal, which `heal detect` carries across from the diagnostic. Either way the rerun exits non-zero if the collector drifts again, and the artifact records the failure rather than a healthy result.
-
-You can pass the healed artifact to `report`:
-
-```bash
-node dist/src/cli.js report \
-  --scan /tmp/blast-radius-demo/scan-result.json \
-  --heal /tmp/blast-radius-demo/heal-rerun.json \
-  --output /tmp/blast-radius-demo/impact-report-with-healing.html
-```
-
-Without `--heal`, the report stays on the simple three-action path. With it, the approval gate shows the line-level diff between the collector's current `parse_code` and the one Bright Data proposed.
-
-Healing moves a collector's template, never its identity. A healthy rerun says only that the supported health checks passed; it does not claim autonomous or guaranteed correctness.
+`heal run` takes two to three minutes and spends credits live, or replays a recorded response with `--recorded fixtures/heal/awaiting-approval.progress.json` — the resulting artifact is marked `heal.source: "recorded"` so replayed evidence is never shown as a live call. Pass the healed artifact to `report --heal <heal-rerun.json>` to see the line-level template diff at the approval gate. Healing moves a collector's template, never its identity.
 
 ## The local report
 
-The report presents a clear three-action workflow:
-
-1. Verify the vendor notice.
-2. Scan the local repository.
-3. Open the Impact Report.
-
-It keeps authoritative evidence, the CapabilityChange, deadline status, proven CodeMatches, and Analysis Limitations separate.
-
-It also supports keyboard navigation, a skip link, focus movement to new headings, progress announcements, and reduced-motion preferences.
-
-The report is local HTML. No report data needs to leave the machine.
-
-The Issue #3 proof walkthrough is available at [docs/show-me-issue-3.html](docs/show-me-issue-3.html).
+The generated HTML report walks a clear three-action path — verify the notice, scan the repository, open the Impact Report — keeping the CapabilityChange, deadline status, proven CodeMatches, and Analysis Limitations in separate sections. It is local HTML with no data leaving the machine, and supports keyboard navigation, a skip link, and reduced-motion preferences. Walkthrough: [docs/show-me-issue-3.html](docs/show-me-issue-3.html).
 
 ## Privacy boundary
 
-Repository analysis stays local by design.
-
-The external collection boundary may receive public vendor material, but it does not receive the repository being scanned.
-
-The saved JSON artifacts make both sides inspectable:
+Repository analysis stays local by design: the collection boundary may receive public vendor material, but never the repository being scanned.
 
 ```text
 public vendor material -> collection artifact
 local repository       -> scan artifact -> local report
 ```
 
-This separation supports offline demos and protects proprietary repository contents.
+See [ADR-0001](docs/adr/0001-separate-public-collection-from-local-analysis.md).
 
-See [docs/adr/0001-separate-public-collection-from-local-analysis.md](docs/adr/0001-separate-public-collection-from-local-analysis.md).
+## Scope
 
-## MVP boundary
+Blast Radius supports one Node.js or TypeScript repository with one root `package.json`, JS/TS AST analysis, structured config parsing, and same-file import/alias/assignment tracing. It does not attempt workspace support, runtime-reachability analysis, severity scoring, CI policy, generated migration guidance, or multi-language analysis. The scanner can miss code; it must never present unproved code as an Impact.
 
-The current product intentionally supports:
-
-- one Node.js or TypeScript repository with one root `package.json`;
-- JavaScript and TypeScript AST analysis;
-- structured configuration parsing;
-- minimally normalized literal endpoint matching;
-- same-file imports, aliases, destructuring, and assignment chains;
-- exact `file:line` results with `direct` or `alias-traced` evidence.
-
-It does not claim:
-
-- a repository matcher for any watched vendor;
-- workspace support;
-- runtime-reachability analysis;
-- complete semantic understanding;
-- severity scoring;
-- CI policy;
-- generated migration guidance;
-- multi-language analysis;
-- proof of dynamic or unsupported usage.
-
-The scanner can miss code. It must not present unproved code as an Impact.
+Full boundary: [docs/product-contract.md](docs/product-contract.md).
 
 ## Project layout
 
@@ -559,59 +248,28 @@ The scanner can miss code. It must not present unproved code as an Impact.
 
 ## Development checks
 
-Build the project:
-
 ```bash
-npm run build
+npm run build       # build the project
+npm run typecheck   # tsc --noEmit
+npm run lint        # oxlint
+npm test            # full acceptance suite (build first)
+npm run metrics     # regenerate the Eval table from the fixture suite
 ```
 
-Run the typecheck:
-
-```bash
-npm run typecheck
-```
-
-Run the configured Oxlint checks:
-
-```bash
-npm run lint
-```
-
-Install Chromium once before browser tests:
+Install Chromium once before browser tests, then run them:
 
 ```bash
 npx playwright install chromium
-```
-
-Run browser checks:
-
-```bash
 npm run test:browser
 ```
 
-Run the full acceptance suite:
+`npm test` covers notice validation, assertion gates, deadline handling, collector health, human-approved healing, vendor matches, aliases, decoys, dynamic access, and accessibility — all against recorded fixtures, so it needs no credentials and no network.
 
-```bash
-npm test
-```
-
-The tests cover notice validation, assertion gates, deadline handling, collector health, human-approved healing, vendor matches, aliases, decoys, and dynamic access.
-
-Regenerate the [Eval table](#eval-table) from the fixture suite:
-
-```bash
-npm run metrics
-```
-
-The healing tests replay recorded Bright Data responses through a fake fetcher and never reach the network, so `npm test` works with no credentials and no connection.
-
-Two narrow live contract checks are opt-in. The collection one needs credentials. The healing one starts a real job on the live collector and spends credits, so credentials alone are not enough — it also needs a deliberate `BLASTRADIUS_LIVE_HEAL=1`, and it always ends in a rejection so the collector is left exactly as it was found:
+Two narrow live contract checks are opt-in: the collection one needs Bright Data credentials, and the healing one starts a real job and spends credits, so it also needs a deliberate `BLASTRADIUS_LIVE_HEAL=1` — it always ends in a rejection so the collector is left exactly as it was found.
 
 ```bash
 npm run test:brightdata                            # collection contract only
 BLASTRADIUS_LIVE_HEAL=1 npm run test:brightdata    # also runs the live heal
 ```
-
-They also cover cross-file aliases, limitation-only scans, reports, and accessibility behavior.
 
 For the product rules and current scope, read [CONTEXT.md](CONTEXT.md) and [docs/product-contract.md](docs/product-contract.md).
