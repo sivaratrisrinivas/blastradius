@@ -175,7 +175,7 @@ export function isRecord(value: JsonValue): value is JsonObject {
   return value !== null && !Array.isArray(value) && Object.prototype.toString.call(value) === "[object Object]";
 }
 
-function isStringValue(value: JsonValue): value is string {
+export function isStringValue(value: JsonValue): value is string {
   return Object.prototype.toString.call(value) === "[object String]";
 }
 
@@ -280,7 +280,14 @@ export function collectorHealthArtifact(
   vendor?: Vendor,
   sourceUrl?: string
 ): CollectorHealthArtifact {
-  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "collector-health", collectorHealth, ...(vendor ? { vendor } : {}), ...(sourceUrl ? { sourceUrl } : {}) };
+  const artifact: CollectorHealthArtifact = {
+    schemaVersion: ARTIFACT_SCHEMA_VERSION,
+    kind: "collector-health",
+    collectorHealth
+  };
+  if (vendor) artifact.vendor = vendor;
+  if (sourceUrl) artifact.sourceUrl = sourceUrl;
+  return artifact;
 }
 
 export function isExactDate(value: string): boolean {
@@ -473,7 +480,15 @@ export function assertVendorNoticeArtifact(value: JsonValue): VendorNoticeArtifa
     ? undefined
     : parseCollectorHealth(value.collectorHealth, collection?.collector);
   if (collectorHealth?.status === "drifted") throw new Error(`drifted CollectorHealth output cannot be scanned or treated as a VendorNotice (${collectorHealth.signal})`);
-  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "vendor-notice", collection, ...(collectorHealth ? { collectorHealth } : {}), notice, capabilityChange };
+  const artifact: VendorNoticeArtifact = {
+    schemaVersion: ARTIFACT_SCHEMA_VERSION,
+    kind: "vendor-notice",
+    collection,
+    notice,
+    capabilityChange
+  };
+  if (collectorHealth) artifact.collectorHealth = collectorHealth;
+  return artifact;
 }
 
 export function assertCollectorHealthArtifact(value: JsonValue): CollectorHealthArtifact {
@@ -491,7 +506,14 @@ export function assertCollectorHealthArtifact(value: JsonValue): CollectorHealth
     if (!capability || capability.vendor !== vendorValue) throw new Error("collector-health source is not a curated first-party source");
     vendor = capability.vendor;
   }
-  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "collector-health", collectorHealth, ...(vendor ? { vendor } : {}), ...(sourceUrl ? { sourceUrl } : {}) };
+  const artifact: CollectorHealthArtifact = {
+    schemaVersion: ARTIFACT_SCHEMA_VERSION,
+    kind: "collector-health",
+    collectorHealth
+  };
+  if (vendor) artifact.vendor = vendor;
+  if (sourceUrl) artifact.sourceUrl = sourceUrl;
+  return artifact;
 }
 
 function sameCollector(left: CollectorIdentity, right: CollectorIdentity): boolean {
@@ -670,5 +692,16 @@ export function assertScanArtifact(value: JsonValue): ScanArtifact {
     if (impactMatches.length === 0) throw new Error("Impact requires at least one proven CodeMatch");
     impact = { capabilityChange: impactChange, codeMatches: impactMatches };
   }
-  return { schemaVersion: ARTIFACT_SCHEMA_VERSION, kind: "scan-result", collection, ...(collectorHealth ? { collectorHealth } : {}), notice, capabilityChange, codeMatches, limitations, impact };
+  const artifact: ScanArtifact = {
+    schemaVersion: ARTIFACT_SCHEMA_VERSION,
+    kind: "scan-result",
+    collection,
+    notice,
+    capabilityChange,
+    codeMatches,
+    limitations,
+    impact
+  };
+  if (collectorHealth) artifact.collectorHealth = collectorHealth;
+  return artifact;
 }

@@ -3,6 +3,7 @@ import {
   COLLECTION_SCHEMA_VERSION,
   asString,
   isRecord,
+  isStringValue,
   parseJson,
   type JsonObject,
   type JsonValue,
@@ -141,10 +142,14 @@ async function requestJson(
 }
 
 function collectionId(value: JsonValue): string {
-  if (!isRecord(value) || typeof value.collection_id !== "string" || value.collection_id.trim() === "") {
+  if (!isRecord(value)) {
     throw new Error("Bright Data trigger response did not include a collection ID");
   }
-  return value.collection_id;
+  try {
+    return asString(value.collection_id, "collection_id");
+  } catch {
+    throw new Error("Bright Data trigger response did not include a collection ID");
+  }
 }
 
 function throwHealth(
@@ -156,7 +161,7 @@ function throwHealth(
   throw collectorHealthError({ identity: config.collectorId, version: config.collectorVersion }, signal, message, request.vendor, request.sourceUrl);
 }
 
-function assertDatasetRecordShape(
+function assertDatasetRecordContract(
   request: CollectionRequest,
   config: BrightDataConfig,
   value: JsonObject
@@ -172,19 +177,19 @@ function assertDatasetRecordShape(
   const malformed: string[] = [];
   for (const [field, aliases] of requiredFields) {
     const valueForField = valueFrom(value, field, ...aliases);
-    if (valueForField === undefined || valueForField === null || (typeof valueForField === "string" && valueForField.trim() === "")) {
+    if (valueForField === undefined || valueForField === null || (isStringValue(valueForField) && valueForField.trim() === "")) {
       collapsed.push(field);
-    } else if (typeof valueForField !== "string") {
+    } else if (!isStringValue(valueForField)) {
       malformed.push(field);
     }
   }
   for (const [field, aliases] of [["vendor", []], ["sourceUrl", ["source_url"]], ["retrievedAt", ["retrieved_at"]]] as const) {
     const valueForField = valueFrom(value, field, ...aliases);
-    if (valueForField !== undefined && valueForField !== null && typeof valueForField !== "string") malformed.push(field);
+    if (valueForField !== undefined && valueForField !== null && !isStringValue(valueForField)) malformed.push(field);
     if (valueForField !== undefined && (valueForField === null || valueForField === "")) collapsed.push(field);
   }
   const deadlineIso = valueFrom(value, "deadlineIso", "deadline_iso");
-  if (deadlineIso !== undefined && deadlineIso !== null && typeof deadlineIso !== "string") malformed.push("deadlineIso");
+  if (deadlineIso !== undefined && deadlineIso !== null && !isStringValue(deadlineIso)) malformed.push("deadlineIso");
   if (collapsed.length > 0) throwHealth(request, config, "required-field-collapse", `Required collector field(s) were missing or empty: ${collapsed.join(", ")}.`);
   if (malformed.length > 0) throwHealth(request, config, "schema-failure", `Collector field(s) had an unsupported shape: ${malformed.join(", ")}.`);
 }
@@ -196,7 +201,7 @@ function collectionFromRecord(
   retrievedAt: string
 ): VendorNoticeCollection {
   if (!isRecord(value)) throwHealth(request, config, "schema-failure", "Bright Data dataset record was not an object.");
-  assertDatasetRecordShape(request, config, value);
+  assertDatasetRecordContract(request, config, value);
   const vendor = optionalField(value, request.vendor, "vendor");
   const sourceUrl = optionalField(value, request.sourceUrl, "sourceUrl", "source_url");
   if (vendor !== request.vendor || sourceUrl !== request.sourceUrl) {
@@ -270,7 +275,7 @@ export async function collectBrightDataVendorNotice(
     if (Array.isArray(dataset) && dataset.length > 0) {
       return vendorNoticeArtifactFromCollection(collectionFromRecord(request, config, dataset[0], retrievedAt()));
     }
-    if (!Array.isArray(dataset) && (!isRecord(dataset) || typeof dataset.status !== "string" || dataset.status.trim() === "")) {
+    if (!Array.isArray(dataset) && (!isRecord(dataset) || !isStringValue(dataset.status) || dataset.status.trim() === "")) {
       throwHealth(request, config, "schema-failure", "Bright Data dataset response did not match the collection contract.");
     }
     if (attempt + 1 < config.maxPollAttempts) await sleep(config.pollIntervalMs);

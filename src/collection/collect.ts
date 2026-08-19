@@ -6,6 +6,7 @@ import {
   asString,
   isChangeType,
   isRecord,
+  isStringValue,
   parseJson,
   type CollectorIdentity,
   type JsonObject,
@@ -15,20 +16,29 @@ import {
   healthyCollectorHealth
 } from "../domain/artifacts.js";
 import { evaluateCapabilityChangeCandidate, type CapabilityChangeCandidate } from "../domain/assertions.js";
-import { capabilityForSourceUrl } from "../domain/capabilities.js";
+import { capabilityForSourceUrl, type Vendor } from "../domain/capabilities.js";
 import { collectorHealthError } from "../domain/collector-health.js";
 
 const DEFAULT_FIXTURE_COLLECTOR: CollectorIdentity = { identity: "deterministic-fixture", version: "fixture-v1" };
 
-function fixtureMetadata(value: JsonValue): { collector: CollectorIdentity; vendor?: "Slack" | "OpenAI" | "Cloudflare"; sourceUrl?: string } {
+interface FixtureMetadata {
+  collector: CollectorIdentity;
+  vendor?: Vendor;
+  sourceUrl?: string;
+}
+
+function fixtureMetadata(value: JsonValue): FixtureMetadata {
   if (!isRecord(value)) return { collector: DEFAULT_FIXTURE_COLLECTOR };
   let collector = DEFAULT_FIXTURE_COLLECTOR;
-  if (isRecord(value.collector) && typeof value.collector.identity === "string" && typeof value.collector.version === "string" && value.collector.identity.trim() !== "" && value.collector.version.trim() !== "") {
+  if (isRecord(value.collector) && isStringValue(value.collector.identity) && isStringValue(value.collector.version) && value.collector.identity.trim() !== "" && value.collector.version.trim() !== "") {
     collector = { identity: value.collector.identity, version: value.collector.version };
   }
-  const vendor = value.vendor === "Slack" || value.vendor === "OpenAI" || value.vendor === "Cloudflare" ? value.vendor : undefined;
-  const sourceUrl = typeof value.sourceUrl === "string" && value.sourceUrl.trim() !== "" ? value.sourceUrl : undefined;
-  return { collector, ...(vendor ? { vendor } : {}), ...(sourceUrl ? { sourceUrl } : {}) };
+  const vendor: Vendor | undefined = value.vendor === "Slack" || value.vendor === "OpenAI" || value.vendor === "Cloudflare" ? value.vendor : undefined;
+  const sourceUrl = isStringValue(value.sourceUrl) && value.sourceUrl.trim() !== "" ? value.sourceUrl : undefined;
+  const metadata: FixtureMetadata = { collector };
+  if (vendor) metadata.vendor = vendor;
+  if (sourceUrl) metadata.sourceUrl = sourceUrl;
+  return metadata;
 }
 
 function fixtureHealthError(value: JsonValue, signal: "zero-results" | "required-field-collapse" | "schema-failure", message: string): never {
@@ -40,16 +50,16 @@ function assertFixtureRequiredFields(value: JsonObject): void {
   const requiredFields = ["vendor", "sourceUrl", "retrievedAt", "content", "excerpt", "deadlineOriginal"] as const;
   const collapsed = requiredFields.filter(field => {
     const fieldValue = value[field];
-    return fieldValue === undefined || fieldValue === null || (typeof fieldValue === "string" && fieldValue.trim() === "");
+    return fieldValue === undefined || fieldValue === null || (isStringValue(fieldValue) && fieldValue.trim() === "");
   });
   const malformed = requiredFields.filter(field => {
     const fieldValue = value[field];
-    return fieldValue !== undefined && fieldValue !== null && typeof fieldValue !== "string";
+    return fieldValue !== undefined && fieldValue !== null && !isStringValue(fieldValue);
   });
   if (collapsed.length > 0) fixtureHealthError(value, "required-field-collapse", `Required collection field(s) were missing or empty: ${collapsed.join(", ")}.`);
   if (malformed.length > 0) fixtureHealthError(value, "schema-failure", `Required collection field(s) had an unsupported shape: ${malformed.join(", ")}.`);
   if (value.deadlineIso === undefined || value.deadlineIso === "") fixtureHealthError(value, "required-field-collapse", "Required collection field(s) were missing or empty: deadlineIso.");
-  if (value.deadlineIso !== null && value.deadlineIso !== undefined && typeof value.deadlineIso !== "string") fixtureHealthError(value, "schema-failure", "Required collection field(s) had an unsupported shape: deadlineIso.");
+  if (value.deadlineIso !== null && value.deadlineIso !== undefined && !isStringValue(value.deadlineIso)) fixtureHealthError(value, "schema-failure", "Required collection field(s) had an unsupported shape: deadlineIso.");
 }
 
 export function collectVendorNotice(fixturePath: string): VendorNoticeArtifact {
@@ -113,7 +123,7 @@ export function collectVendorNotice(fixturePath: string): VendorNoticeArtifact {
 
 function parseFixtureCollector(value: JsonValue): CollectorIdentity {
   if (!isRecord(value)) fixtureHealthError(value, "schema-failure", "Collector metadata must be an object with identity and version.");
-  if (typeof value.identity !== "string" || typeof value.version !== "string" || value.identity.trim() === "" || value.version.trim() === "") {
+  if (!isStringValue(value.identity) || !isStringValue(value.version) || value.identity.trim() === "" || value.version.trim() === "") {
     fixtureHealthError(value, "schema-failure", "Collector metadata must contain non-empty identity and version fields.");
   }
   return {

@@ -28,6 +28,12 @@ interface HealthDiagnostic {
   };
 }
 
+interface StoredDiagnostic {
+  result: ReturnType<typeof runCli>;
+  outputPath: string;
+  diagnostic: HealthDiagnostic;
+}
+
 function runCli(args: string[]) {
   return spawnSync(process.execPath, [cliPath, ...args], {
     cwd: repositoryRoot,
@@ -35,7 +41,7 @@ function runCli(args: string[]) {
   });
 }
 
-function readStored(directory: string, fixture: string): { result: ReturnType<typeof runCli>; outputPath: string; diagnostic: HealthDiagnostic } {
+function readStored(directory: string, fixture: string): StoredDiagnostic {
   const outputPath = resolve(directory, "collector-health.json");
   const result = runCli(["collect", "--fixture", fixture, "--output", outputPath]);
   assert.notEqual(result.status, 0, result.stdout);
