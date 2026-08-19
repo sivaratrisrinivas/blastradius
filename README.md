@@ -244,6 +244,27 @@ For Cloudflare, the scanner recognizes the old `/accounts/{account_id}/workers/n
 
 It deliberately does not match the replacement `/storage/kv/namespaces/*` route.
 
+## Eval table
+
+This table is not typed by hand. `npm run metrics` re-runs the real scanner, assertion gates, deadline normaliser, and heal workflow over the fixtures the acceptance suite already proves, then writes the result here, so the numbers cannot drift from the code they describe.
+
+<!-- eval-table:start -->
+
+**Headline: 0 false Impacts across 6 adversarial fixtures.**
+
+| Metric | Result | Source |
+| --- | --- | --- |
+| Call-site match precision | 100% (14/14) | positive matcher fixtures — `test/issue-2/3/4/6/7.acceptance.test.ts` |
+| False Impacts on the adversarial decoy | 0 across 6 adversarial fixtures | `client.files.upload()` and other vendor-shaped calls with no vendor provenance — `test/issue-3/4/6/7.acceptance.test.ts` |
+| Limitation-disclosure rate | 100% (9/9) | dynamic-access fixtures — `test/issue-3/4/6/7.acceptance.test.ts` |
+| Assertion-gate rejection counts | provenance: 1, lifecycle-language: 2, capability-identity: 1, change-type: 1, evidence: 1, deadline: 2 | gate fixtures, by gate — `test/issue-14.acceptance.test.ts`, mirroring `test/issue-5.rules.test.ts` |
+| Date-normalisation accuracy | 100% (6/6) | exact / partial / relative / ranged deadline fixtures — `test/issue-5.rules.test.ts` |
+| Heal success rate | 50% (1/2) | healthy and failed rerun fixtures — `test/issue-12.acceptance.test.ts` |
+
+<!-- eval-table:end -->
+
+Run `npm run metrics` after changing a matcher, a gate, or a fixture to keep this table current. `test/issue-14.acceptance.test.ts` fails if the table in this file falls out of sync with what the suite currently proves.
+
 ## Why a notice is allowed to become a change
 
 Collection applies deterministic assertion gates to the extracted result.
@@ -526,6 +547,7 @@ The scanner can miss code. It must not present unproved code as an Impact.
 | `src/report/` | Renders the local HTML Impact Report. |
 | `src/report/line-diff.ts` | Turns two collector templates into the line diff shown at the approval gate. |
 | `src/cli.ts` | Exposes `collect`, `scan`, `report`, and `heal`. |
+| `src/metrics/` | Re-runs the fixture suite to compute the [Eval table](#eval-table) and write it into this README. |
 | `fixtures/` | Vendor notices and small repositories used by tests. |
 | `fixtures/heal/` | Real Bright Data healing responses, recorded once and replayed offline. |
 | `fixtures/watched/` | First-party notices for the watched vendors, with provenance for every excerpt. |
@@ -574,6 +596,12 @@ npm test
 ```
 
 The tests cover notice validation, assertion gates, deadline handling, collector health, human-approved healing, vendor matches, aliases, decoys, and dynamic access.
+
+Regenerate the [Eval table](#eval-table) from the fixture suite:
+
+```bash
+npm run metrics
+```
 
 The healing tests replay recorded Bright Data responses through a fake fetcher and never reach the network, so `npm test` works with no credentials and no connection.
 
