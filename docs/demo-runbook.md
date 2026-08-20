@@ -84,68 +84,72 @@ animation, `TYPE_DELAY=0.06` slows it down.
 
 ## The beat sheet
 
-Run `./scripts/demo-reset.sh`, then `./scripts/demo.sh`. Press any key to advance. Times are
-cumulative targets, not a script to read aloud.
+Run `./scripts/demo-reset.sh`, then `./scripts/demo.sh`. Press any key to advance. The quoted text
+is the narration. The notes underneath are cues for what to point at, not more lines to read.
 
 ### 1. Hook, 0:00 to 0:10
 
-> "Your code is already broken. Nobody has told you yet."
+> "The dangerous API change is the one your package manager can't see. A vendor can shut off a capability your code still calls, and you find out when a user does."
 
 Nothing on screen but a prompt.
 
 ### 2. Before, 0:10 to 0:25
 
-`npm outdated` returns almost nothing. The dependencies are current. It still has no idea that an
-API this repository calls is being switched off, because no version bump ever happened. That gap is
-the product.
+> "`npm outdated` says this repo is up to date. That's the trap. Package versions can be current while a vendor puts one of the APIs inside them on a deadline. The dependencies look healthy. The integration may not be."
+
+`npm outdated` returns almost nothing. Keep the cursor on the empty result.
 
 ### 3. One command on a real repository, 0:25 to 1:05
 
-`blast check openai-node` scans 711 files and comes back with one Impact, five proven line numbers,
-and a countdown.
+> "Now I want the question `npm outdated` can't answer. Does this repository call a capability that a vendor is shutting down? `blast check` takes the vendor notice, then scans the repository locally. Here it checks 711 files and finds one Impact, five exact line numbers, and a deadline."
 
-This is the moment the demo exists for. Say the claim plainly: OpenAI's own SDK, at a commit anyone
-can clone, calls the API OpenAI is shutting down. Hold the cursor on the countdown, then on a
-`file:line`. Say the two receipts out loud: the vendor published the notice, the scanner proved the
-line.
+> "This is OpenAI's own SDK, pinned to a commit anyone can clone, calling the API OpenAI is shutting down. The vendor published the notice. The scanner proved the line. We need both receipts before we call this an Impact."
 
-Then the three Analysis Limitations underneath, all Azure call sites. That is code it could not
-prove, disclosed instead of guessed.
+Hold the cursor on the countdown, then on a `file:line`. Point to the three Azure call sites under
+Analysis Limitations.
+
+> "Those Azure call sites stay out of the Impact because the scanner couldn't prove the connection. That is the boundary. Blast Radius may miss something. It does not turn a guess into an outage."
 
 ### 4. Three vendors at once, 1:05 to 1:25
+
+> "This is not an OpenAI-only problem. The same thing happens when a team depends on several vendors whose plans live outside the repo. One command checks Slack, OpenAI, and Cloudflare. Each deadline stays attached to its capability, and each result still needs a line the scanner can prove."
 
 `blast check fixtures/repository-multi-vendor` returns Slack, OpenAI, and Cloudflare in one pass,
 each with its own deadline and line number.
 
 ### 5. It is not a fixture, 1:25 to 1:50
 
-Live Bright Data, on camera. Point out that the evidence sentence differs word for word from the
-stored fixture, which is what proves the page was actually read.
+> "Before we trust the result, check where it came from. This next collection is live. Bright Data reads Slack's public notice, and the evidence sentence is different from the stored fixture. It came from the page we fetched, not from text I typed into the demo. Bright Data receives the public vendor material. The repository stays on this machine."
+
+Point out the changed evidence sentence on screen.
 
 ### 6. Reveal, 1:50 to 2:10
 
-The Impact Report opens in the browser. Click one row. The vendor's own published sentence sits
-beside your line number. Scroll to Analysis Limitations.
+> "Now the report puts the two things a person needs next to each other. The vendor's own sentence beside the file and line that matched it. Nobody has to turn a generic deprecation notice into a new code search project. Scroll down and the limits are there too. The report tells us what it found and where its proof stops."
+
+The Impact Report opens in the browser. Click one row, then scroll to Analysis Limitations.
 
 ### 7. The heal, 2:10 to 2:45
 
-The diagnostic collection exits 1 and withholds its output rather than passing a broken row
-downstream. `heal detect` composes a prompt naming the exact field that collapsed.
+> "There is another way a tool loses trust. It can pretend its own collection never breaks. Here we force a collector failure. A required field collapses, so the diagnostic command exits 1 and withholds the broken result."
 
-Cut to the pre-recorded wait, then come back live at the approval gate. The line is: no human wrote
-a selector. Say plainly that the replayed steps are marked `recorded` in the artifact, so replayed
-evidence is never shown as a live call.
+> "`heal detect` names the field that failed and composes a repair prompt for Bright Data. No human writes a selector. Blast Radius still stops at an approval gate, because a proposed repair is not proof that the repair is right."
+
+Cut to the pre-recorded wait, then come back live at the approval gate.
+
+> "The wait is recorded because a real heal takes two to three minutes. The artifact labels those steps `recorded`, so replayed evidence is never presented as a live call. We approve the proposal, rerun the collection, and check the result again."
 
 ### 8. Result, 2:45 to 2:55
 
-Ten vendors watched, three capabilities provable, and the README eval table generated by
-`npm run metrics` rather than typed. Say the smaller number out loud. Publishing the gap is the
-point.
+> "Here is the number I want you to notice. Ten vendors watched. Three capabilities provable. The gap is not hidden, and it is not a rounding error. Watching a vendor does not mean Blast Radius can prove your repo uses it. The honest answer is smaller, but it is an answer you can trust."
+
+The README eval table is generated by `npm run metrics`, not typed into the demo.
 
 ### 9. Close, 2:55 to 3:00
 
-`git blame` on the Slack call site. A line, an author, a date, and a vendor deadline nobody
-connected to it until now.
+> "Finally, we follow one line back to the person who last changed it. `git blame` gives us the author and date. The vendor deadline tells us when that line matters. That is the job. Connect a public change to the exact code it affects before a customer discovers it for us."
+
+`git blame` on the Slack call site. Hold on the line, author, date, and vendor deadline.
 
 ## Between takes
 
