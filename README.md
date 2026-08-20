@@ -48,6 +48,7 @@ An Impact needs two receipts: the vendor notice proves what changed, and the loc
 | `Impact` | A `CapabilityChange` with at least one proven `CodeMatch`. |
 | `Analysis Limitation` | Related-looking code that the scanner cannot prove. |
 | `WatchedVendor` | A curated vendor source that is collected and health-checked but has no repository matcher, so it can never produce an Impact. |
+| `RepositoryCheck` | One `blast check` run: every matched capability scanned against one repository, with Impacts and unproven usage kept apart. |
 | `CollectorHealth` | A limited record of whether collection returned usable-shaped data. |
 | `CollectorHeal` | One attempt to fix a drifted collector, from detection through a human decision to a rerun. |
 
@@ -63,11 +64,13 @@ blast scan          ->  CodeMatches + Analysis Limitations
 blast report        ->  local HTML Impact Report
 ```
 
-`check` is the primary entry point: point it at a repository and it runs one scan per matched capability, printing every Impact with its deadline, its countdown, and its proven `file:line` evidence. The three commands underneath it are the explicit form — `check` composes them rather than replacing them, and you reach for them when you want one capability, one artifact, or one stage at a time.
+`check` is the primary entry point. Point it at a repository and it runs one scan per matched capability, then prints every Impact it can prove, each with its deadline and its exact `file:line` evidence. The codebase is the question; you do not have to know which vendor notice to pick first.
+
+The three commands below it are the explicit form. `check` runs them rather than replacing them, so anything it reports can also be reproduced one stage at a time.
 
 `collect` turns one official vendor page into a stored, gated JSON artifact. `scan` reads that notice and inspects one local repository with AST analysis, config parsing, and literal endpoint matching, producing exact `file:line` matches plus separately recorded Analysis Limitations for anything it can't prove. `report` renders the result as a local HTML file; with no proven CodeMatch, there is no Impact and no confirmed report.
 
-A fourth command, `blast heal`, only appears when `collect` detects a drifted collector — see [Optional collector healing](#optional-collector-healing).
+One more command, `blast heal`, only appears when `collect` detects a drifted collector — see [Optional collector healing](#optional-collector-healing).
 
 ## Quick start
 
@@ -86,13 +89,28 @@ Check the included example repository against every matched capability:
 node dist/src/cli.js check fixtures/repository-multi-vendor
 ```
 
-That prints all three Impacts — Slack, OpenAI, and Cloudflare — each with the vendor's own excerpt, the deadline in the vendor's words, the days remaining while it is still ahead, and the exact lines that prove it. Add `--report-dir <dir>` to write one HTML Impact Report per impacted capability, or `--output <file.json>` for one combined artifact. An Impact is a finding, not a failure: `check` exits 0 either way.
+That prints all three Impacts: Slack, OpenAI, and Cloudflare. Each one shows the vendor's own words, the deadline, how many days are left when the date is still ahead, and the exact lines that prove the code uses it.
 
-`fixtures/repository-clean` shows the other outcome — zero Impacts, still exit 0, with the coverage and privacy lines unchanged.
+Two options change what gets written:
+
+```bash
+node dist/src/cli.js check <repo> --report-dir reports/   # one HTML report per impacted capability
+node dist/src/cli.js check <repo> --output combined.json  # one JSON file holding every scan
+```
+
+Finding an Impact is not a failure, so the command exits 0 either way. It also works from any directory, because the bundled vendor notices are found next to the installed tool rather than next to you.
+
+To see the opposite result, check a repository that uses none of the three capabilities:
+
+```bash
+node dist/src/cli.js check fixtures/repository-clean
+```
+
+That reports zero Impacts, writes no report, and still prints the coverage and privacy lines.
 
 ### The explicit form
 
-`check` composes the three commands below. Run them directly to work one capability at a time.
+`check` runs the three commands below for you. Run them yourself when you want one capability, one artifact, or one stage at a time.
 
 Collect the included Slack notice:
 
@@ -261,6 +279,8 @@ Full boundary: [docs/product-contract.md](docs/product-contract.md).
 | `src/cli.ts` | Exposes `check`, `collect`, `scan`, `report`, and `heal`. |
 | `src/metrics/` | Re-runs the fixture suite to compute the [Eval table](#eval-table) and write it into this README. |
 | `fixtures/` | Vendor notices and small repositories used by tests. |
+| `fixtures/repository-multi-vendor/` | The demo repository: uses all three matched capabilities at once. |
+| `fixtures/repository-clean/` | A repository using none of them, so `check` has an honest zero-Impact case. |
 | `fixtures/heal/` | Real Bright Data healing responses, recorded once and replayed offline. |
 | `fixtures/watched/` | First-party notices for the watched vendors, with provenance for every excerpt. |
 | `examples/` | Committed structured output from every stage — see [Example output](#example-output). |
