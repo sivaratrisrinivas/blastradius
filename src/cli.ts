@@ -7,10 +7,14 @@ import { checkLocalRepository, impactedChecks, limitationCount, repositoryCheckA
 import { brightDataHealDriver, recordedHealDriver, type CollectorHealDriver } from "./collection/bright-data-heal.js";
 import { detectCollectorHeal, rerunCollectorHeal, resolveCollectorHeal, runCollectorHeal } from "./collection/heal.js";
 import { capabilitiesProvable, curatedSourceUrlForVendor, isVendor, matcherForIdentifier, curatedVendorCount, type Vendor } from "./domain/capabilities.js";
-import { assertCollectorHealArtifact, assertCollectorHealthArtifact, assertVendorNoticeArtifact, collectorLabel, HEAL_PROMPT_MAX_LENGTH, HEALTHY_COLLECTOR_HEALTH_MESSAGE, isRecord, parseJson, type CapabilityChange, type CollectorHealArtifact, type CollectorHealthArtifact, type JsonValue, type RepositoryCheckArtifact, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
+import { assertCollectorHealArtifact, assertCollectorHealthArtifact, assertVendorNoticeArtifact, collectorLabel, HEAL_PROMPT_MAX_LENGTH, HEALTHY_COLLECTOR_HEALTH_MESSAGE, isRecord, parseJson, type CapabilityChange, type CollectorHealArtifact, type CollectorHealthArtifact, type DeadlineStatus, type JsonValue, type RepositoryCheckArtifact, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
 import { CollectorHealthError } from "./domain/collector-health.js";
 import { daysUntilDeadline, deadlineStatus, renderImpactReport } from "./report/render.js";
+import { createStyler, deadlineUrgency, styleEnabled, type Styler } from "./report/style.js";
 import { scanLocalRepository } from "./scan/scan.js";
+
+/** Every command but `check` writes the exact bytes it always has; only `check` ever styles output. */
+const noStyle = createStyler(false);
 
 function option(args: string[], name: string): string {
   const index = args.indexOf(name);
@@ -46,21 +50,21 @@ function readJson(path: string): JsonValue {
   }
 }
 
-function collectorHealthSummary(): string {
-  return HEALTHY_COLLECTOR_HEALTH_MESSAGE;
+function collectorHealthSummary(styler: Styler): string {
+  return styler.dim(HEALTHY_COLLECTOR_HEALTH_MESSAGE);
 }
 
 /** Both numbers, every time. ADR 0002 forbids letting the larger one stand in for the smaller. */
-function coverageSummary(): string {
-  return `Coverage: ${curatedVendorCount()} vendors watched, ${capabilitiesProvable()} capabilities provable.`;
+function coverageSummary(styler: Styler): string {
+  return `Coverage: ${styler.dim(`${curatedVendorCount()}`)} vendors watched, ${styler.bold(`${capabilitiesProvable()}`)} capabilities provable.`;
 }
 
-function privacySummary(): string {
-  return "Privacy: Repository analysis stayed local; source, paths, snippets, and scan artifacts were not sent externally.";
+function privacySummary(styler: Styler): string {
+  return styler.dim("Privacy: Repository analysis stayed local; source, paths, snippets, and scan artifacts were not sent externally.");
 }
 
-function missingCollectorHealthSummary(): string {
-  return "CollectorHealth: no stored health record was provided; health checks were not asserted.";
+function missingCollectorHealthSummary(styler: Styler): string {
+  return styler.dim("CollectorHealth: no stored health record was provided; health checks were not asserted.");
 }
 
 function readVendorNotice(path: string): VendorNoticeArtifact {
@@ -113,23 +117,26 @@ function statedDeadline(change: CapabilityChange): string {
 }
 
 /** The stated deadline plus, only while the date is still ahead, how long is left. */
-function deadlineLine(change: CapabilityChange, now: Date): string {
+function deadlineLine(change: CapabilityChange, status: DeadlineStatus, days: number | null): string {
   const stated = statedDeadline(change);
-  const days = daysUntilDeadline(change.deadlineIso, now);
-  if (deadlineStatus(change.deadlineIso, now) !== "upcoming" || days === null) return stated;
+  if (status !== "upcoming" || days === null) return stated;
   if (days === 0) return `${stated}, due today`;
   return `${stated}, ${days} day${days === 1 ? "" : "s"} remaining`;
 }
 
-function impactSection(entry: CapabilityCheck, now: Date): string {
+function impactSection(entry: CapabilityCheck, now: Date, styler: Styler): string {
   const matches = entry.scan.impact?.codeMatches ?? [];
+  const change = entry.scan.capabilityChange;
+  const status = deadlineStatus(change.deadlineIso, now);
+  const days = daysUntilDeadline(change.deadlineIso, now);
+  const urgency = deadlineUrgency(status, days);
   return [
-    `Impact: ${entry.scan.capabilityChange.vendor} — ${entry.capability.displayName} (${entry.scan.capabilityChange.canonicalIdentifier})`,
-    deadlineLine(entry.scan.capabilityChange, now),
-    `Vendor notice: ${entry.scan.notice.sourceUrl}`,
+    styler.bold("Impact: ") + styler.boldCyan(change.vendor) + styler.bold(` — ${entry.capability.displayName} (${change.canonicalIdentifier})`),
+    styler.urgency(deadlineLine(change, status, days), urgency),
+    `Vendor notice: ${styler.dim(entry.scan.notice.sourceUrl)}`,
     `Vendor evidence: ${entry.scan.notice.excerpt}`,
     `Proven locations (${matches.length}):`,
-    ...matches.map(match => `  ${match.file}:${match.line}: ${match.evidence}`)
+    ...matches.map(match => `  ${styler.cyan(`${match.file}:${match.line}`)}: ${styler.dim(match.evidence)}`)
   ].join("\n");
 }
 
@@ -137,10 +144,10 @@ function impactSection(entry: CapabilityCheck, now: Date): string {
  * Limitations are disclosed under the capability whose scan raised them and are never folded into
  * the Impact count: they are exactly the usage the scanner could not prove.
  */
-function limitationSection(check: RepositoryCheck): string {
+function limitationSection(check: RepositoryCheck, styler: Styler): string {
   const total = limitationCount(check);
-  if (total === 0) return "Analysis Limitations: none.";
-  return [
+  if (total === 0) return styler.dim("Analysis Limitations: none.");
+  return styler.dim([
     `Analysis Limitations (${total} disclosed, none counted as an Impact):`,
     ...check.checks.flatMap(entry => entry.scan.limitations.length === 0
       ? []
@@ -148,7 +155,16 @@ function limitationSection(check: RepositoryCheck): string {
         `- ${entry.capability.reportLabel}:`,
         ...entry.scan.limitations.map(limitation => `  - ${limitation.file}:${limitation.line}: ${limitation.reason}`)
       ])
-  ].join("\n");
+  ].join("\n"));
+}
+
+/** The one line every run prints: bold overall, with the Impact count kept bold and the file count dimmed. */
+function checkHeadline(check: RepositoryCheck, impactCount: number, styler: Styler): string {
+  return styler.bold(`Checked ${check.repositoryPath}: `)
+    + styler.dim(`${check.filesScanned}`)
+    + styler.bold(` file(s) scanned, ${check.checks.length} capabilities checked, `)
+    + styler.bold(`${impactCount}`)
+    + styler.bold(` Impact${impactCount === 1 ? "" : "s"} found.`);
 }
 
 function reportFileName(canonicalIdentifier: string): string {
@@ -169,6 +185,7 @@ async function run(args: string[]): Promise<void> {
     const repositoryPath = args[1];
     if (!repositoryPath || repositoryPath.startsWith("--")) throw new Error("missing repository path");
     const now = new Date();
+    const styler = createStyler(styleEnabled(process.stdout));
     const check = checkLocalRepository(repositoryPath);
     const impacted = impactedChecks(check);
     const artifactLines: string[] = [];
@@ -190,16 +207,16 @@ async function run(args: string[]): Promise<void> {
     }
     // Blank lines between sections, so the summary stays readable when three Impacts land at once.
     process.stdout.write([
-      `Checked ${repositoryPath}: ${check.filesScanned} file(s) scanned, ${check.checks.length} capabilities checked, ${impacted.length} Impact${impacted.length === 1 ? "" : "s"} found.`,
+      checkHeadline(check, impacted.length, styler),
       ...impacted.length === 0
         ? ["No Impact: no proven CodeMatch was found for any matched capability."]
-        : impacted.map(entry => impactSection(entry, now)),
-      limitationSection(check),
+        : impacted.map(entry => impactSection(entry, now, styler)),
+      limitationSection(check, styler),
       ...artifactLines.length === 0 ? [] : [artifactLines.join("\n")],
       [
-        check.checks.every(entry => entry.scan.collectorHealth) ? collectorHealthSummary() : missingCollectorHealthSummary(),
-        coverageSummary(),
-        privacySummary()
+        check.checks.every(entry => entry.scan.collectorHealth) ? collectorHealthSummary(styler) : missingCollectorHealthSummary(styler),
+        coverageSummary(styler),
+        privacySummary(styler)
       ].join("\n")
     ].join("\n\n") + "\n");
     return;
@@ -225,8 +242,8 @@ async function run(args: string[]): Promise<void> {
         `Source: ${artifact.notice.sourceUrl}`,
         `Evidence: ${artifact.notice.excerpt}`,
         statedDeadline(artifact.capabilityChange),
-        collectorHealthSummary(),
-        coverageSummary()
+        collectorHealthSummary(noStyle),
+        coverageSummary(noStyle)
       ].join("\n") + "\n");
     } catch (error) {
       if (error instanceof CollectorHealthError) {
@@ -264,9 +281,9 @@ async function run(args: string[]): Promise<void> {
       `Scanned local repository: ${result.codeMatches.length} proven CodeMatch${result.codeMatches.length > 1 ? "es" : ""}; ${result.limitations.length} unresolved usage(s).`,
       provenDetails,
       limitationDetails,
-      result.collectorHealth ? collectorHealthSummary() : missingCollectorHealthSummary(),
-      coverageSummary(),
-      privacySummary()
+      result.collectorHealth ? collectorHealthSummary(noStyle) : missingCollectorHealthSummary(noStyle),
+      coverageSummary(noStyle),
+      privacySummary(noStyle)
     ].join("\n") + "\n");
     return;
   }
