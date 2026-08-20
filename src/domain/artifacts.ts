@@ -181,14 +181,14 @@ export interface ScanArtifact {
 /**
  * One `check` run: every matched capability scanned against one repository. It aggregates scan
  * artifacts and never re-derives an Impact — `impactCount` counts the scans that already proved
- * one, and limitations are counted apart so unproven usage can never inflate it.
+ * one, and `limitationCount` is kept apart so a reader cannot fold unproven usage into it. Both
+ * coverage numbers are recorded because ADR 0002 requires them wherever results are published.
  */
 export interface RepositoryCheckArtifact {
   schemaVersion: typeof ARTIFACT_SCHEMA_VERSION;
   kind: "repository-check";
   repository: string;
   filesScanned: number;
-  capabilitiesChecked: number;
   vendorsWatched: number;
   capabilitiesProvable: number;
   impactCount: number;
@@ -222,6 +222,13 @@ export function asString(value: JsonValue, field: string): string {
 function asPositiveInteger(value: JsonValue, field: string): number {
   if (!isNumberValue(value) || !Number.isInteger(value) || value < 1) {
     throw new Error(`${field} must be a positive integer`);
+  }
+  return value;
+}
+
+function asCount(value: JsonValue, field: string): number {
+  if (!isNumberValue(value) || !Number.isInteger(value) || value < 0) {
+    throw new Error(`${field} must be a non-negative integer`);
   }
   return value;
 }
@@ -735,4 +742,36 @@ export function assertScanArtifact(value: JsonValue): ScanArtifact {
   };
   if (collectorHealth) artifact.collectorHealth = collectorHealth;
   return artifact;
+}
+
+/**
+ * The gate the combined `check` artifact passes on its way out. It re-asserts every scan it holds
+ * and recounts the two numbers a reader must not conflate: an Impact count that only proven scans
+ * can raise, and a limitation count that can never be added to it. ADR 0002's rule that the larger
+ * coverage number never stands in for the smaller is checked here too.
+ */
+export function assertRepositoryCheckArtifact(value: JsonValue): RepositoryCheckArtifact {
+  if (!isRecord(value) || value.schemaVersion !== ARTIFACT_SCHEMA_VERSION || value.kind !== "repository-check") {
+    throw new Error("repository-check artifact has an unsupported schema");
+  }
+  if (!Array.isArray(value.scans)) throw new Error("repository-check artifact is missing its scans");
+  const scans = value.scans.map(assertScanArtifact);
+  const impactCount = scans.filter(scan => scan.impact !== null).length;
+  const limitationCount = scans.reduce((total, scan) => total + scan.limitations.length, 0);
+  if (value.impactCount !== impactCount) throw new Error("repository-check Impact count does not match the scans that proved one");
+  if (value.limitationCount !== limitationCount) throw new Error("repository-check limitation count does not match the disclosed Analysis Limitations");
+  const vendorsWatched = asPositiveInteger(value.vendorsWatched, "vendorsWatched");
+  const capabilitiesProvable = asPositiveInteger(value.capabilitiesProvable, "capabilitiesProvable");
+  if (capabilitiesProvable > vendorsWatched) throw new Error("repository-check cannot claim more provable capabilities than watched vendors");
+  return {
+    schemaVersion: ARTIFACT_SCHEMA_VERSION,
+    kind: "repository-check",
+    repository: asString(value.repository, "repository"),
+    filesScanned: asCount(value.filesScanned, "filesScanned"),
+    vendorsWatched,
+    capabilitiesProvable,
+    impactCount,
+    limitationCount,
+    scans
+  };
 }

@@ -1,5 +1,5 @@
 import { collectVendorNotice } from "../collection/collect.js";
-import { ARTIFACT_SCHEMA_VERSION, type RepositoryCheckArtifact, type ScanArtifact } from "../domain/artifacts.js";
+import { ARTIFACT_SCHEMA_VERSION, assertRepositoryCheckArtifact, parseJson, type RepositoryCheckArtifact, type ScanArtifact } from "../domain/artifacts.js";
 import { capabilitiesProvable, curatedCapabilities, curatedVendorCount, type CuratedCapability } from "../domain/capabilities.js";
 import { bundledPath } from "../package-root.js";
 import { repositoryFileCount, scanLocalRepository } from "../scan/scan.js";
@@ -43,16 +43,18 @@ export function limitationCount(check: RepositoryCheck): number {
 }
 
 export function repositoryCheckArtifact(check: RepositoryCheck): RepositoryCheckArtifact {
-  return {
+  const artifact: RepositoryCheckArtifact = {
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
     kind: "repository-check",
     repository: check.repositoryPath,
     filesScanned: check.filesScanned,
-    capabilitiesChecked: check.checks.length,
     vendorsWatched: curatedVendorCount(),
     capabilitiesProvable: capabilitiesProvable(),
     impactCount: impactedChecks(check).length,
     limitationCount: limitationCount(check),
     scans: check.checks.map(entry => entry.scan)
   };
+  // Round-tripped through JSON so the combined artifact faces the same gate on the way out that a
+  // reader faces on the way in: every scan re-asserted, both counts recomputed from the scans.
+  return assertRepositoryCheckArtifact(parseJson(JSON.stringify(artifact)));
 }

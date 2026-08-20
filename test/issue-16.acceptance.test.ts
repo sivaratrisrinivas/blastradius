@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { checkLocalRepository, impactedChecks, limitationCount, repositoryCheckArtifact } from "../src/check/check.js";
 import { collectVendorNotice } from "../src/collection/collect.js";
-import { assertScanArtifact, isRecord, parseJson } from "../src/domain/artifacts.js";
+import { assertRepositoryCheckArtifact, isRecord, parseJson } from "../src/domain/artifacts.js";
 import { capabilitiesProvable, curatedCapabilities, curatedVendorCount } from "../src/domain/capabilities.js";
 import { bundledPath } from "../src/package-root.js";
 import { daysUntilDeadline, deadlineStatus } from "../src/report/render.js";
@@ -87,7 +87,7 @@ test("every Impact in a multi-vendor repository is reported, never only the firs
   assert.match(result.stdout, /3 capabilities checked, 3 Impacts found\./);
   for (const entry of impacted) {
     assert.ok(
-      result.stdout.includes(`Impact: ${entry.capability.reportLabel} (${entry.scan.capabilityChange.canonicalIdentifier})`),
+      result.stdout.includes(`Impact: ${entry.scan.capabilityChange.vendor} — ${entry.capability.displayName} (${entry.scan.capabilityChange.canonicalIdentifier})`),
       `${entry.capability.reportLabel} was missing from the summary`
     );
     for (const match of entry.scan.impact?.codeMatches ?? []) {
@@ -101,12 +101,19 @@ test("the demo command prints a dated countdown for an upcoming deadline from an
   const now = new Date();
   const result = runCheck([openAIRepository]);
   assert.equal(result.status, 0, result.stderr);
-  assert.ok(result.stdout.includes("Impact: OpenAI Assistants API (openai.assistants)"));
+  assert.ok(result.stdout.includes("Impact: OpenAI — Assistants API (openai.assistants)"));
   assert.ok(result.stdout.includes("src/assistants.ts:6"));
   assert.ok(
     result.stdout.includes(`Deadline: August 26, 2026 (2026-08-26)${expectedCountdown("2026-08-26", now)}`),
     `deadline line did not carry the expected countdown:\n${result.stdout}`
   );
+});
+
+test("the documented command runs verbatim, with a relative path, from the repository root", () => {
+  const result = spawnSync(process.execPath, [cliPath, "check", "fixtures/repository-openai"], { cwd: repositoryRoot, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.stdout.includes("Impact: OpenAI — Assistants API (openai.assistants)"));
+  assert.ok(result.stdout.includes("src/assistants.ts:6"));
 });
 
 test("a repository with no vendor usage reports zero Impacts and exits 0", () => {
@@ -139,6 +146,10 @@ test("the coverage line names both numbers and the privacy line is always printe
   assert.equal(result.status, 0, result.stderr);
   assert.ok(result.stdout.includes(`Coverage: ${curatedVendorCount()} vendors watched, ${capabilitiesProvable()} capabilities provable.`));
   assert.ok(result.stdout.includes("Privacy: Repository analysis stayed local"));
+  assert.ok(
+    result.stdout.includes("CollectorHealth: passed zero-results, required-field-collapse, and schema-failure checks only"),
+    "check must disclose the same narrow CollectorHealth claim scan does"
+  );
 });
 
 test("--report-dir writes one Impact Report per impacted capability, and none without an Impact", () => {
@@ -153,11 +164,19 @@ test("--report-dir writes one Impact Report per impacted capability, and none wi
     assert.ok(readFileSync(reportPath, "utf8").includes("Confirmed Impact"));
   }
 
-  const emptyDirectory = temporaryDirectory();
-  const clean = runCheck([cleanRepository, "--report-dir", emptyDirectory]);
+  const unwrittenDirectory = resolve(temporaryDirectory(), "reports");
+  const clean = runCheck([cleanRepository, "--report-dir", unwrittenDirectory]);
   assert.equal(clean.status, 0, clean.stderr);
-  assert.deepEqual(readdirSync(emptyDirectory), []);
+  assert.equal(existsSync(unwrittenDirectory), false, "no Impact must leave no report directory behind");
   assert.ok(clean.stdout.includes("No Impact, so no Impact Report was written."));
+});
+
+test("the combined artifact is refused if its Impact count does not match its scans", () => {
+  const artifact = repositoryCheckArtifact(checkLocalRepository(multiVendorRepository));
+  const inflated = parseJson(JSON.stringify(artifact));
+  assert.ok(isRecord(inflated));
+  inflated.impactCount = artifact.impactCount + artifact.limitationCount + 1;
+  assert.throws(() => assertRepositoryCheckArtifact(inflated), /Impact count does not match/);
 });
 
 test("--output writes one combined artifact holding every scan of the run", () => {
@@ -166,15 +185,12 @@ test("--output writes one combined artifact holding every scan of the run", () =
   assert.equal(result.status, 0, result.stderr);
   assert.ok(result.stdout.includes(`Combined scan artifact: ${outputPath}`));
 
-  const stored = parseJson(readFileSync(outputPath, "utf8"));
-  assert.ok(isRecord(stored));
-  assert.equal(stored.kind, "repository-check");
-  assert.equal(stored.capabilitiesChecked, capabilitiesProvable());
-  assert.equal(stored.vendorsWatched, curatedVendorCount());
-  assert.equal(stored.impactCount, capabilitiesProvable());
-  assert.ok(Array.isArray(stored.scans));
+  const stored = assertRepositoryCheckArtifact(parseJson(readFileSync(outputPath, "utf8")));
   assert.equal(stored.scans.length, capabilitiesProvable());
-  for (const scan of stored.scans) assert.ok(assertScanArtifact(scan).impact !== null);
+  assert.equal(stored.impactCount, capabilitiesProvable());
+  assert.equal(stored.vendorsWatched, curatedVendorCount());
+  assert.equal(stored.capabilitiesProvable, capabilitiesProvable());
+  for (const scan of stored.scans) assert.notEqual(scan.impact, null);
 
   const expected = repositoryCheckArtifact(checkLocalRepository(multiVendorRepository));
   assert.equal(stored.filesScanned, expected.filesScanned);

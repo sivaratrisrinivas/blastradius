@@ -1,11 +1,7 @@
-import { bundledPath, packageRoot } from "../package-root.js";
-
 /** The fixtures shipped with the package sit under its root, the same one `check` resolves from. */
-export const repositoryRoot = packageRoot;
+import { bundledPath as fixturePath } from "../package-root.js";
 
-export function fixturePath(relativePath: string): string {
-  return bundledPath(relativePath);
-}
+export { fixturePath };
 
 interface MatchLocation {
   file: string;

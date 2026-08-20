@@ -107,12 +107,14 @@ function healRerunCollection(args: string[], heal: CollectorHealArtifact): () =>
 }
 
 
-/**
- * The deadline in the vendor's own words, its ISO form when one was stated, and — only while the
- * date is still ahead — how long is left. The countdown uses the report's injected-clock helper.
- */
+/** The deadline in the vendor's own words, and its ISO form only when the source stated one. */
+function statedDeadline(change: CapabilityChange): string {
+  return `Deadline: ${change.deadlineOriginal} (${change.deadlineIso ?? "not stated"})`;
+}
+
+/** The stated deadline plus, only while the date is still ahead, how long is left. */
 function deadlineLine(change: CapabilityChange, now: Date): string {
-  const stated = `Deadline: ${change.deadlineOriginal} (${change.deadlineIso ?? "not stated"})`;
+  const stated = statedDeadline(change);
   const days = daysUntilDeadline(change.deadlineIso, now);
   if (deadlineStatus(change.deadlineIso, now) !== "upcoming" || days === null) return stated;
   if (days === 0) return `${stated}, due today`;
@@ -122,7 +124,7 @@ function deadlineLine(change: CapabilityChange, now: Date): string {
 function impactSection(entry: CapabilityCheck, now: Date): string {
   const matches = entry.scan.impact?.codeMatches ?? [];
   return [
-    `Impact: ${entry.capability.reportLabel} (${entry.scan.capabilityChange.canonicalIdentifier})`,
+    `Impact: ${entry.scan.capabilityChange.vendor} — ${entry.capability.displayName} (${entry.scan.capabilityChange.canonicalIdentifier})`,
     deadlineLine(entry.scan.capabilityChange, now),
     `Vendor notice: ${entry.scan.notice.sourceUrl}`,
     `Vendor evidence: ${entry.scan.notice.excerpt}`,
@@ -172,8 +174,8 @@ async function run(args: string[]): Promise<void> {
     const artifactLines: string[] = [];
     const reportDirectory = optionalOption(args, "--report-dir");
     if (reportDirectory !== undefined) {
-      // No Impact, no report — the same rule `report` follows.
-      mkdirSync(resolve(reportDirectory), { recursive: true });
+      // No Impact, no report — the same rule `report` follows, down to leaving no directory behind.
+      if (impacted.length > 0) mkdirSync(resolve(reportDirectory), { recursive: true });
       for (const entry of impacted) {
         const reportPath = resolve(reportDirectory, reportFileName(entry.scan.capabilityChange.canonicalIdentifier));
         writeFileSync(reportPath, renderCheckedImpactReport(entry.scan, now), "utf8");
@@ -194,7 +196,11 @@ async function run(args: string[]): Promise<void> {
         : impacted.map(entry => impactSection(entry, now)),
       limitationSection(check),
       ...artifactLines.length === 0 ? [] : [artifactLines.join("\n")],
-      [coverageSummary(), privacySummary()].join("\n")
+      [
+        check.checks.every(entry => entry.scan.collectorHealth) ? collectorHealthSummary() : missingCollectorHealthSummary(),
+        coverageSummary(),
+        privacySummary()
+      ].join("\n")
     ].join("\n\n") + "\n");
     return;
   }
@@ -218,7 +224,7 @@ async function run(args: string[]): Promise<void> {
         `Verified ${artifact.notice.vendor} VendorNotice from ${artifact.collection?.collector.identity ?? "stored collection"} and stored ${artifact.capabilityChange.canonicalIdentifier}.`,
         `Source: ${artifact.notice.sourceUrl}`,
         `Evidence: ${artifact.notice.excerpt}`,
-        `Deadline: ${artifact.capabilityChange.deadlineOriginal} (${artifact.capabilityChange.deadlineIso ?? "not stated"})`,
+        statedDeadline(artifact.capabilityChange),
         collectorHealthSummary(),
         coverageSummary()
       ].join("\n") + "\n");
@@ -246,7 +252,7 @@ async function run(args: string[]): Promise<void> {
         `Impact: ${result.capabilityChange.canonicalIdentifier}`,
         `Evidence: ${result.impact.codeMatches.map(match => match.evidence).join(" | ")}`,
         `Locations: ${result.impact.codeMatches.map(match => `${match.file}:${match.line}`).join(", ")}`,
-        `Deadline: ${result.capabilityChange.deadlineOriginal} (${result.capabilityChange.deadlineIso ?? "not stated"})`
+        statedDeadline(result.capabilityChange)
       ].join("\n");
     const limitationDetails = result.limitations.length === 0
       ? "Analysis Limitations: none."

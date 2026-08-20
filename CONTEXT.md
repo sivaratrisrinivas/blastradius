@@ -24,6 +24,10 @@ _Avoid_: Possible usage, dependency presence
 A CapabilityChange with one or more CodeMatches. Blast Radius may miss usage it cannot prove, but it must never present unproved usage as an Impact.
 _Avoid_: Potential impact, severity
 
+**RepositoryCheck**:
+One `blast check` run: every CuratedCapability that has a repository matcher, scanned against one repository and aggregated. It re-derives nothing — an Impact is counted only where a scan already proved one, and Analysis Limitations are counted separately so they can never be folded in. WatchedVendors are not scanned, but both coverage numbers are still published.
+_Avoid_: Aggregate impact, repository risk score
+
 **CollectorHealth**:
 The limited health state inferred from zero results, required-field collapse, or schema failure. These signals can detect some collector drift but cannot prove that semantically correct content was extracted.
 _Avoid_: Guaranteed scraper correctness

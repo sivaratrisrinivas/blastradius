@@ -21,7 +21,7 @@ blast scan ./demo-repo
   -> CLI summary and local HTML report
 ```
 
-`blast check ./demo-repo` runs that loop once per matched capability in a single command. It is a composition over the same collect/scan/report path and holds the same invariant: it never aggregates an unproven match into an Impact, and a WatchedVendor is not scanned because it has no matcher.
+`blast check ./demo-repo` is the primary entry point: it runs that loop once per matched capability in a single command. It composes the same collect/scan/report path rather than replacing it, and holds the same invariant — it never aggregates an unproven match into an Impact, and a WatchedVendor is not scanned because it has no matcher.
 
 Repository contents stay local. External AI receives public vendor material only; see [ADR-0001](adr/0001-separate-public-collection-from-local-analysis.md).
 

@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { computeEvalTable, renderEvalTableMarkdown } from "./eval-table.js";
-import { repositoryRoot } from "./scan-fixtures.js";
+import { packageRoot } from "../package-root.js";
 
 const START_MARKER = "<!-- eval-table:start -->";
 const END_MARKER = "<!-- eval-table:end -->";
@@ -20,7 +20,7 @@ export function spliceEvalTable(readme: string, tableMarkdown: string): string {
 }
 
 async function main(): Promise<void> {
-  const readmePath = resolve(repositoryRoot, "README.md");
+  const readmePath = resolve(packageRoot, "README.md");
   const table = await computeEvalTable();
   const markdown = renderEvalTableMarkdown(table);
   const readme = readFileSync(readmePath, "utf8");
