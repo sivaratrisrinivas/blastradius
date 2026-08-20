@@ -288,6 +288,7 @@ Full boundary: [docs/product-contract.md](docs/product-contract.md).
 | `docs/product-contract.md` | Product rules and MVP boundary. |
 | `docs/adr/` | The decisions behind the design, and why each one was made. |
 | `docs/ai-assistance.md` | Disclosure of how AI was used to build this. |
+| `docs/demo-runbook.md` | Step-by-step process for recording the demo video. |
 | `CONTEXT.md` | Domain vocabulary and definitions. |
 | `tools/oxlint/anti-slop/` | Local anti-slop Oxlint plugin. |
 
