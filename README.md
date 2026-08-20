@@ -56,10 +56,14 @@ Full definitions live in [CONTEXT.md](CONTEXT.md).
 ## How the workflow works
 
 ```text
-blast collect  ->  VendorNotice + CapabilityChange
-blast scan     ->  CodeMatches + Analysis Limitations
-blast report   ->  local HTML Impact Report
+blast check <repo>  ->  every matched capability, in one command
+
+blast collect       ->  VendorNotice + CapabilityChange
+blast scan          ->  CodeMatches + Analysis Limitations
+blast report        ->  local HTML Impact Report
 ```
+
+`check` is the primary entry point: point it at a repository and it runs one scan per matched capability, printing every Impact with its deadline, its countdown, and its proven `file:line` evidence. The three commands underneath it are the explicit form — `check` composes them rather than replacing them, and you reach for them when you want one capability, one artifact, or one stage at a time.
 
 `collect` turns one official vendor page into a stored, gated JSON artifact. `scan` reads that notice and inspects one local repository with AST analysis, config parsing, and literal endpoint matching, producing exact `file:line` matches plus separately recorded Analysis Limitations for anything it can't prove. `report` renders the result as a local HTML file; with no proven CodeMatch, there is no Impact and no confirmed report.
 
@@ -75,6 +79,20 @@ Install dependencies and build the CLI:
 npm install
 npm run build
 ```
+
+Check the included example repository against every matched capability:
+
+```bash
+node dist/src/cli.js check fixtures/repository-multi-vendor
+```
+
+That prints all three Impacts — Slack, OpenAI, and Cloudflare — each with the vendor's own excerpt, the deadline in the vendor's words, the days remaining while it is still ahead, and the exact lines that prove it. Add `--report-dir <dir>` to write one HTML Impact Report per impacted capability, or `--output <file.json>` for one combined artifact. An Impact is a finding, not a failure: `check` exits 0 either way.
+
+`fixtures/repository-clean` shows the other outcome — zero Impacts, still exit 0, with the coverage and privacy lines unchanged.
+
+### The explicit form
+
+`check` composes the three commands below. Run them directly to work one capability at a time.
 
 Collect the included Slack notice:
 
@@ -239,7 +257,8 @@ Full boundary: [docs/product-contract.md](docs/product-contract.md).
 | `src/domain/` | Defines and validates versioned JSON artifacts. |
 | `src/report/` | Renders the local HTML Impact Report. |
 | `src/report/line-diff.ts` | Turns two collector templates into the line diff shown at the approval gate. |
-| `src/cli.ts` | Exposes `collect`, `scan`, `report`, and `heal`. |
+| `src/check/` | Composes one scan per matched capability into a single `check` run. |
+| `src/cli.ts` | Exposes `check`, `collect`, `scan`, `report`, and `heal`. |
 | `src/metrics/` | Re-runs the fixture suite to compute the [Eval table](#eval-table) and write it into this README. |
 | `fixtures/` | Vendor notices and small repositories used by tests. |
 | `fixtures/heal/` | Real Bright Data healing responses, recorded once and replayed offline. |

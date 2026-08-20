@@ -178,6 +178,24 @@ export interface ScanArtifact {
   impact: Impact | null;
 }
 
+/**
+ * One `check` run: every matched capability scanned against one repository. It aggregates scan
+ * artifacts and never re-derives an Impact — `impactCount` counts the scans that already proved
+ * one, and limitations are counted apart so unproven usage can never inflate it.
+ */
+export interface RepositoryCheckArtifact {
+  schemaVersion: typeof ARTIFACT_SCHEMA_VERSION;
+  kind: "repository-check";
+  repository: string;
+  filesScanned: number;
+  capabilitiesChecked: number;
+  vendorsWatched: number;
+  capabilitiesProvable: number;
+  impactCount: number;
+  limitationCount: number;
+  scans: ScanArtifact[];
+}
+
 export function parseJson(text: string): JsonValue {
   return JSON.parse(text);
 }

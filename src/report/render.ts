@@ -47,11 +47,25 @@ function parseCodeDiff(diff: CollectorHealDiff): string {
   return `<pre class="diff" data-section="heal-parse-code-diff" aria-label="Proposed change to the collector parse code"><code>${rows}</code></pre>`;
 }
 
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** The injected clock reduced to its UTC date, so a deadline never turns on the runner's timezone. */
+function todayUtc(now: Date): number {
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+}
+
 export function deadlineStatus(deadlineIso: string | null, now: Date): DeadlineStatus {
   if (deadlineIso === null) return "date-not-stated";
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const deadline = Date.parse(`${deadlineIso}T00:00:00.000Z`);
-  return deadline < today ? "past" : "upcoming";
+  return Date.parse(`${deadlineIso}T00:00:00.000Z`) < todayUtc(now) ? "past" : "upcoming";
+}
+
+/**
+ * Whole days from the injected clock to the deadline, on the same UTC convention `deadlineStatus`
+ * uses: `null` when no date was stated, `0` on the deadline itself, negative once it has passed.
+ */
+export function daysUntilDeadline(deadlineIso: string | null, now: Date): number | null {
+  if (deadlineIso === null) return null;
+  return (Date.parse(`${deadlineIso}T00:00:00.000Z`) - todayUtc(now)) / MILLISECONDS_PER_DAY;
 }
 
 function locations(scan: ScanArtifact): string {

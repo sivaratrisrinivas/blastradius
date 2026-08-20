@@ -621,6 +621,15 @@ function matchesCloudflareConfigFile(file: string, repositoryRoot: string, capab
   return { matches, limitations: [] };
 }
 
+/**
+ * How many repository files a scan reads: the source files it parses plus the configuration files
+ * it inspects. Counted with the same walk the scan itself uses, so the headline cannot drift.
+ */
+export function repositoryFileCount(repositoryPath: string): number {
+  const repositoryRoot = resolve(repositoryPath);
+  return repositoryFiles(repositoryRoot, SOURCE_EXTENSIONS).length + repositoryFiles(repositoryRoot, CONFIG_EXTENSIONS).length;
+}
+
 export function scanLocalRepository(repositoryPath: string, notice: VendorNoticeArtifact): ScanArtifact {
   const repositoryRoot = resolve(repositoryPath);
   if (!existsSync(resolve(repositoryRoot, "package.json"))) throw new Error("scan requires one repository root package.json");

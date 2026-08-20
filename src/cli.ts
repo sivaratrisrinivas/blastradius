@@ -3,12 +3,13 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { collectBrightDataVendorNotice, brightDataConfigForCollector, brightDataConfigForVendor, loadEnvironmentFile } from "./collection/bright-data.js";
 import { collectVendorNotice } from "./collection/collect.js";
+import { checkLocalRepository, impactedChecks, limitationCount, repositoryCheckArtifact, type CapabilityCheck, type RepositoryCheck } from "./check/check.js";
 import { brightDataHealDriver, recordedHealDriver, type CollectorHealDriver } from "./collection/bright-data-heal.js";
 import { detectCollectorHeal, rerunCollectorHeal, resolveCollectorHeal, runCollectorHeal } from "./collection/heal.js";
 import { capabilitiesProvable, curatedSourceUrlForVendor, isVendor, matcherForIdentifier, curatedVendorCount, type Vendor } from "./domain/capabilities.js";
-import { assertCollectorHealArtifact, assertCollectorHealthArtifact, assertVendorNoticeArtifact, collectorLabel, HEAL_PROMPT_MAX_LENGTH, HEALTHY_COLLECTOR_HEALTH_MESSAGE, isRecord, parseJson, type CollectorHealArtifact, type CollectorHealthArtifact, type JsonValue, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
+import { assertCollectorHealArtifact, assertCollectorHealthArtifact, assertVendorNoticeArtifact, collectorLabel, HEAL_PROMPT_MAX_LENGTH, HEALTHY_COLLECTOR_HEALTH_MESSAGE, isRecord, parseJson, type CapabilityChange, type CollectorHealArtifact, type CollectorHealthArtifact, type JsonValue, type RepositoryCheckArtifact, type ScanArtifact, type VendorNoticeArtifact } from "./domain/artifacts.js";
 import { CollectorHealthError } from "./domain/collector-health.js";
-import { renderImpactReport } from "./report/render.js";
+import { daysUntilDeadline, deadlineStatus, renderImpactReport } from "./report/render.js";
 import { scanLocalRepository } from "./scan/scan.js";
 
 function option(args: string[], name: string): string {
@@ -32,7 +33,7 @@ function vendorOption(value: string): Vendor {
   throw new Error(`${value} is not a curated vendor; ${curatedVendorCount()} vendors are watched and ${capabilitiesProvable()} capabilities are provable`);
 }
 
-function writeJson(path: string, value: CollectorHealArtifact | CollectorHealthArtifact | VendorNoticeArtifact | ScanArtifact): void {
+function writeJson(path: string, value: CollectorHealArtifact | CollectorHealthArtifact | RepositoryCheckArtifact | VendorNoticeArtifact | ScanArtifact): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
@@ -52,6 +53,10 @@ function collectorHealthSummary(): string {
 /** Both numbers, every time. ADR 0002 forbids letting the larger one stand in for the smaller. */
 function coverageSummary(): string {
   return `Coverage: ${curatedVendorCount()} vendors watched, ${capabilitiesProvable()} capabilities provable.`;
+}
+
+function privacySummary(): string {
+  return "Privacy: Repository analysis stayed local; source, paths, snippets, and scan artifacts were not sent externally.";
 }
 
 function missingCollectorHealthSummary(): string {
@@ -101,8 +106,98 @@ function healRerunCollection(args: string[], heal: CollectorHealArtifact): () =>
   return () => collectBrightDataVendorNotice({ vendor, sourceUrl }, config);
 }
 
+
+/**
+ * The deadline in the vendor's own words, its ISO form when one was stated, and — only while the
+ * date is still ahead — how long is left. The countdown uses the report's injected-clock helper.
+ */
+function deadlineLine(change: CapabilityChange, now: Date): string {
+  const stated = `Deadline: ${change.deadlineOriginal} (${change.deadlineIso ?? "not stated"})`;
+  const days = daysUntilDeadline(change.deadlineIso, now);
+  if (deadlineStatus(change.deadlineIso, now) !== "upcoming" || days === null) return stated;
+  if (days === 0) return `${stated}, due today`;
+  return `${stated}, ${days} day${days === 1 ? "" : "s"} remaining`;
+}
+
+function impactSection(entry: CapabilityCheck, now: Date): string {
+  const matches = entry.scan.impact?.codeMatches ?? [];
+  return [
+    `Impact: ${entry.capability.reportLabel} (${entry.scan.capabilityChange.canonicalIdentifier})`,
+    deadlineLine(entry.scan.capabilityChange, now),
+    `Vendor notice: ${entry.scan.notice.sourceUrl}`,
+    `Vendor evidence: ${entry.scan.notice.excerpt}`,
+    `Proven locations (${matches.length}):`,
+    ...matches.map(match => `  ${match.file}:${match.line}: ${match.evidence}`)
+  ].join("\n");
+}
+
+/**
+ * Limitations are disclosed under the capability whose scan raised them and are never folded into
+ * the Impact count: they are exactly the usage the scanner could not prove.
+ */
+function limitationSection(check: RepositoryCheck): string {
+  const total = limitationCount(check);
+  if (total === 0) return "Analysis Limitations: none.";
+  return [
+    `Analysis Limitations (${total} disclosed, none counted as an Impact):`,
+    ...check.checks.flatMap(entry => entry.scan.limitations.length === 0
+      ? []
+      : [
+        `- ${entry.capability.reportLabel}:`,
+        ...entry.scan.limitations.map(limitation => `  - ${limitation.file}:${limitation.line}: ${limitation.reason}`)
+      ])
+  ].join("\n");
+}
+
+function reportFileName(canonicalIdentifier: string): string {
+  return `impact-${canonicalIdentifier.replace(/[^A-Za-z0-9]+/g, "-")}.html`;
+}
+
+/**
+ * Round-trips the in-memory scan through JSON so the report renders it under exactly the assertions
+ * a scan artifact read from disk would face.
+ */
+function renderCheckedImpactReport(scan: ScanArtifact, now: Date): string {
+  return renderImpactReport(parseJson(JSON.stringify(scan)), now);
+}
+
 async function run(args: string[]): Promise<void> {
   const command = args[0];
+  if (command === "check") {
+    const repositoryPath = args[1];
+    if (!repositoryPath || repositoryPath.startsWith("--")) throw new Error("missing repository path");
+    const now = new Date();
+    const check = checkLocalRepository(repositoryPath);
+    const impacted = impactedChecks(check);
+    const artifactLines: string[] = [];
+    const reportDirectory = optionalOption(args, "--report-dir");
+    if (reportDirectory !== undefined) {
+      // No Impact, no report — the same rule `report` follows.
+      mkdirSync(resolve(reportDirectory), { recursive: true });
+      for (const entry of impacted) {
+        const reportPath = resolve(reportDirectory, reportFileName(entry.scan.capabilityChange.canonicalIdentifier));
+        writeFileSync(reportPath, renderCheckedImpactReport(entry.scan, now), "utf8");
+        artifactLines.push(`Impact Report: ${reportPath}`);
+      }
+      if (impacted.length === 0) artifactLines.push("No Impact, so no Impact Report was written.");
+    }
+    const outputPath = optionalOption(args, "--output");
+    if (outputPath !== undefined) {
+      writeJson(outputPath, repositoryCheckArtifact(check));
+      artifactLines.push(`Combined scan artifact: ${resolve(outputPath)}`);
+    }
+    // Blank lines between sections, so the summary stays readable when three Impacts land at once.
+    process.stdout.write([
+      `Checked ${repositoryPath}: ${check.filesScanned} file(s) scanned, ${check.checks.length} capabilities checked, ${impacted.length} Impact${impacted.length === 1 ? "" : "s"} found.`,
+      ...impacted.length === 0
+        ? ["No Impact: no proven CodeMatch was found for any matched capability."]
+        : impacted.map(entry => impactSection(entry, now)),
+      limitationSection(check),
+      ...artifactLines.length === 0 ? [] : [artifactLines.join("\n")],
+      [coverageSummary(), privacySummary()].join("\n")
+    ].join("\n\n") + "\n");
+    return;
+  }
   if (command === "collect") {
     loadEnvironmentFile(resolve(process.cwd(), ".env"));
     const outputPath = option(args, "--output");
@@ -165,7 +260,7 @@ async function run(args: string[]): Promise<void> {
       limitationDetails,
       result.collectorHealth ? collectorHealthSummary() : missingCollectorHealthSummary(),
       coverageSummary(),
-      "Privacy: Repository analysis stayed local; source, paths, snippets, and scan artifacts were not sent externally."
+      privacySummary()
     ].join("\n") + "\n");
     return;
   }
@@ -230,7 +325,7 @@ async function run(args: string[]): Promise<void> {
     }
     throw new Error(`unknown heal action ${action}; expected detect, run, approve, reject, or rerun`);
   }
-  throw new Error(`unknown command ${command ?? ""}; expected collect, scan, report, or heal`);
+  throw new Error(`unknown command ${command ?? ""}; expected check, collect, scan, report, or heal`);
 }
 
 try {

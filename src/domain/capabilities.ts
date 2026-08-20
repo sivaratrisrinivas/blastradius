@@ -46,6 +46,8 @@ interface CuratedSourceRecord {
 /** A curated first-party source that a repository matcher can turn into an Impact. */
 export interface CuratedCapability extends CuratedSourceRecord {
   matcher: CapabilityMatcher;
+  /** The bundled notice fixture, relative to the package root, that `check` collects this from. */
+  noticeFixture: string;
   packageName: string;
   constructorNames: readonly string[];
   capabilityPath: readonly string[];
@@ -75,6 +77,7 @@ const CURATED_CAPABILITIES: readonly CuratedCapability[] = [
     vendor: "Slack",
     sourceUrl: SLACK_VENDOR_NOTICE_SOURCE_URL,
     canonicalIdentifier: "slack.files.upload",
+    noticeFixture: "fixtures/slack-notice.json",
     evidenceIdentifier: "files.upload",
     evidenceProximity: "adjacent",
     matcher: "slack-files-upload",
@@ -90,6 +93,7 @@ const CURATED_CAPABILITIES: readonly CuratedCapability[] = [
     vendor: "OpenAI",
     sourceUrl: OPENAI_VENDOR_NOTICE_SOURCE_URL,
     canonicalIdentifier: "openai.assistants",
+    noticeFixture: "fixtures/openai-notice.json",
     evidenceIdentifier: "Assistants API",
     evidenceProximity: "adjacent",
     matcher: "openai-assistants",
@@ -105,6 +109,7 @@ const CURATED_CAPABILITIES: readonly CuratedCapability[] = [
     vendor: "Cloudflare",
     sourceUrl: CLOUDFLARE_VENDOR_NOTICE_SOURCE_URL,
     canonicalIdentifier: "cloudflare.workers.kv.legacy-namespace-routes",
+    noticeFixture: "fixtures/cloudflare-kv-notice.json",
     evidenceIdentifier: "legacy Workers KV API routes",
     evidenceProximity: "same-sentence",
     matcher: "cloudflare-kv-legacy-routes",
@@ -206,6 +211,11 @@ const CURATED_SOURCES: readonly CuratedSource[] = [...CURATED_CAPABILITIES, ...W
 
 export function curatedSources(): readonly CuratedSource[] {
   return CURATED_SOURCES;
+}
+
+/** The sources with a repository matcher — the only ones a scan can ever turn into an Impact. */
+export function curatedCapabilities(): readonly CuratedCapability[] {
+  return CURATED_CAPABILITIES;
 }
 
 export function watchedVendors(): readonly WatchedVendor[] {

@@ -1,0 +1,5 @@
+{
+  "name": "no-vendor-usage-fixture",
+  "private": true,
+  "type": "module"
+}

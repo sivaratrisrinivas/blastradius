@@ -1,13 +1,10 @@
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { bundledPath, packageRoot } from "../package-root.js";
 
-const here = dirname(fileURLToPath(import.meta.url));
-
-/** Three directories up from dist/src/metrics lands on the repository root. */
-export const repositoryRoot = resolve(here, "../../..");
+/** The fixtures shipped with the package sit under its root, the same one `check` resolves from. */
+export const repositoryRoot = packageRoot;
 
 export function fixturePath(relativePath: string): string {
-  return resolve(repositoryRoot, relativePath);
+  return bundledPath(relativePath);
 }
 
 interface MatchLocation {
